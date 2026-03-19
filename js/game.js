@@ -167,7 +167,7 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   }
   ctx.stroke();
 
-  // 下の線
+  // 下の線 + しっぽの下辺
   ctx.beginPath();
   for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(CAT.buttX * W); px++) {
     const xr = px / W;
@@ -175,15 +175,19 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
     if (px === Math.floor(CAT.noseX * W)) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
-  ctx.stroke();
-
-  // お尻の垂直線
-  const buttPx = Math.round(CAT.buttX * W);
-  const buttBottom = getBottomY(CAT.buttX, params, W, H);
-  const buttTop = getTopY(CAT.buttX, params, W, H);
-  ctx.beginPath();
-  ctx.moveTo(buttPx, buttBottom);
-  ctx.lineTo(buttPx, buttTop);
+  // buttX → tailX: しっぽの先端に向かって滑らかに上昇
+  {
+    const buttPx = Math.round(CAT.buttX * W);
+    const tailPx = Math.ceil(CAT.tailX * W);
+    const startY = getBottomY(CAT.buttX, params, W, H);
+    const endY = getTopY(CAT.tailX, params, W, H);
+    for (let px = buttPx + 1; px <= tailPx; px++) {
+      const progress = (px - buttPx) / (tailPx - buttPx);
+      const smooth = progress * progress * (3 - 2 * progress);
+      const y = startY + (endY - startY) * smooth;
+      ctx.lineTo(px, y);
+    }
+  }
   ctx.stroke();
 
   // 目
