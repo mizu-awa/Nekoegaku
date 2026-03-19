@@ -136,7 +136,11 @@ function getBottomY(xRatio, params, W, H) {
     const smooth = bt * bt * (3 - 2 * bt);
     baseY = bottomBaseY + (backY - bottomBaseY) * smooth;
   } else if (t > buttT) {
-    baseY = backY;
+    // しっぽ領域: お尻（backY）からしっぽ先端に向かって上昇
+    const tailProgress = (t - buttT) / (1 - buttT);
+    const smooth = tailProgress * tailProgress * (3 - 2 * tailProgress);
+    const tailTipY = backY - getTailContribution(CAT.tailX, params, W, H);
+    baseY = backY + (tailTipY - backY) * smooth;
   }
 
   const feet = getFeetContribution(xRatio, params, W, H);
@@ -167,26 +171,13 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   }
   ctx.stroke();
 
-  // 下の線 + しっぽの下辺
+  // 下の線（しっぽの先端まで）
   ctx.beginPath();
-  for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(CAT.buttX * W); px++) {
+  for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(CAT.tailX * W); px++) {
     const xr = px / W;
     const y = getBottomY(xr, params, W, H);
     if (px === Math.floor(CAT.noseX * W)) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
-  }
-  // buttX → tailX: しっぽの先端に向かって滑らかに上昇
-  {
-    const buttPx = Math.round(CAT.buttX * W);
-    const tailPx = Math.ceil(CAT.tailX * W);
-    const startY = getBottomY(CAT.buttX, params, W, H);
-    const endY = getTopY(CAT.tailX, params, W, H);
-    for (let px = buttPx + 1; px <= tailPx; px++) {
-      const progress = (px - buttPx) / (tailPx - buttPx);
-      const smooth = progress * progress * (3 - 2 * progress);
-      const y = startY + (endY - startY) * smooth;
-      ctx.lineTo(px, y);
-    }
   }
   ctx.stroke();
 
@@ -635,7 +626,10 @@ window.autoFit = function () {
         const smooth = bt * bt * (3 - 2 * bt);
         baseY = CAT.bottomY * H + (backY_val - CAT.bottomY * H) * smooth;
       } else if (t > buttT) {
-        baseY = backY_val;
+        const tailProgress = (t - buttT) / (1 - buttT);
+        const smooth2 = tailProgress * tailProgress * (3 - 2 * tailProgress);
+        const tailTipY = backY_val - getTailContribution(CAT.tailX, trial, W, H);
+        baseY = backY_val + (tailTipY - backY_val) * smooth2;
       }
       const mathBot = baseY + feet;
       err += (refBottomY[idx] - mathBot) ** 2;
