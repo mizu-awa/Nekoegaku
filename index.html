@@ -251,7 +251,7 @@ canvas {
       </div>
       <div class="slider-group">
         <label>🦶 足の本数</label>
-        <input type="range" id="sl-feetFreq" min="1" max="8" step="0.1">
+        <input type="range" id="sl-feetFreq" min="1" max="14" step="0.1">
       </div>
       <div class="slider-group">
         <label>⇄ 足の位置</label>
@@ -308,7 +308,7 @@ const player = {
   earWidth: 40,
   tailHeight: 30,
   feetAmp: 20,
-  feetFreq: 2.5,
+  feetFreq: 5.0,
   feetPhase: 0.8,
 };
 
@@ -316,15 +316,15 @@ const player = {
 // 描画座標系の基本定数
 // ============================================================
 const CAT = {
-  noseX: 0.07,    // 顔の先端 (比率)
-  tailX: 0.92,    // しっぽの先端
-  noseY: 0.58,    // 顔の先端のy
-  backY: 0.30,    // 背中のy
-  bottomY: 0.78,  // 足の一番下あたり
-  earCenterX: 0.17, // 耳の中心x
-  eyeY: 0.46,     // 目のy
-  eye1X: 0.12,    // 左目x
-  eye2X: 0.19,    // 右目x
+  noseX: 0.025,    // 顔の先端 (画像から抽出)
+  tailX: 0.96,     // しっぽの先端
+  noseY: 0.445,    // 顔の先端のy
+  backY: 0.273,    // 背中のy
+  bottomY: 0.78,   // 足の波の中心あたり
+  earCenterX: 0.183, // 耳の中心x（左耳0.10、右耳0.265の中点）
+  eyeY: 0.34,      // 目のy
+  eye1X: 0.12,     // 左目x
+  eye2X: 0.19,     // 右目x
 };
 
 // ============================================================
@@ -338,7 +338,8 @@ function getTopY(xRatio, params, W, H) {
   const noseY = CAT.noseY * H;
 
   // 顔の左輪郭（左端で下に張り出す）
-  const faceT = Math.max(0, 1 - t * 6);
+  // t=0.05（x≈0.07）付近でゼロに。耳（t≈0.08）には影響しない
+  const faceT = Math.max(0, 1 - t * 20);
   const faceY = faceT * faceT * (noseY - backY);
 
   // 耳のピーク (ガウシアン)
@@ -349,7 +350,8 @@ function getTopY(xRatio, params, W, H) {
   const ear2 = params.earHeight * Math.exp(-((x - ear2X) ** 2) / (2 * params.earWidth ** 2));
 
   // しっぽ（右端で上に跳ねる）
-  const tailStart = 0.82;
+  // 画像データ: しっぽはx≈0.885（t≈0.92）から上昇開始
+  const tailStart = 0.92;
   const tailT = Math.max(0, (t - tailStart) / (1 - tailStart));
   const tail = params.tailHeight * tailT * tailT;
 
@@ -360,22 +362,43 @@ function getTopY(xRatio, params, W, H) {
 // 下の線のy座標を計算
 // ============================================================
 function getBottomY(xRatio, params, W, H) {
-  const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX);
+  const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX); // 0→1
   if (t < 0 || t > 1) return CAT.noseY * H;
 
   const noseY = CAT.noseY * H;
   const backY = CAT.backY * H;
+  const bottomBaseY = CAT.bottomY * H;
   const tailTipY = backY - params.tailHeight; // しっぽ先端のy
-  const baseY = noseY * (1 - t) + tailTipY * t; // 直線補間
 
-  // エンベロープ（左端と右端で0に）
-  const env = Math.sin(Math.PI * t);
+  // 顔の下輪郭（固定）: 鼻先(noseY) → 足の底(bottomBaseY) へ smoothstep 遷移
+  // 画像データ: x≈0.025→0.145 で遷移（t≈0→0.13）
+  const faceEndT = 0.13;
+  let baseY;
+  if (t < faceEndT) {
+    const ft = t / faceEndT;
+    const smooth = ft * ft * (3 - 2 * ft);
+    baseY = noseY + (bottomBaseY - noseY) * smooth;
+  } else {
+    baseY = bottomBaseY;
+  }
 
-  // 足のsin波
-  const waveBase = (CAT.bottomY * H - noseY) * 0.7; // 基本の足の張り出し
+  // お尻の急上昇（固定）: x≈0.925（t≈0.96）からしっぽ先端へ急カーブ
+  // 画像データ: x=0.925→0.960 で y=0.72→0.15 へ急上昇
+  const buttRiseStart = 0.96;
+  if (t > buttRiseStart) {
+    const bt = (t - buttRiseStart) / (1 - buttRiseStart);
+    baseY = bottomBaseY + (tailTipY - bottomBaseY) * bt * bt;
+  }
+
+  // 足のsin波（顔とお尻の領域ではフェードアウト）
+  const feetStartT = 0.15;
+  const feetEndT = 0.95;
+  const feetEnvLeft = Math.min(1, Math.max(0, (t - feetStartT) / 0.05));
+  const feetEnvRight = Math.min(1, Math.max(0, (feetEndT - t) / 0.03));
+  const feetEnv = feetEnvLeft * feetEnvRight;
   const wave = params.feetAmp * Math.sin(params.feetFreq * Math.PI * 2 * t + params.feetPhase);
 
-  return baseY + env * (waveBase + wave);
+  return baseY + feetEnv * wave;
 }
 
 // ============================================================
