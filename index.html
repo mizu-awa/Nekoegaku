@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ねこえがく</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Zen Maru Gothic', sans-serif;
+  background: #fdf6e3;
+  color: #3c3c3c;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  width: 900px;
+  max-width: 95vw;
+}
+
+/* タイトル画面 */
+#title-screen {
+  text-align: center;
+  animation: fadeIn 0.5s;
+}
+
+#title-screen h1 {
+  font-size: 4rem;
+  font-weight: 900;
+  color: #e8824e;
+  text-shadow: 3px 3px 0 #f5c89a;
+  margin-bottom: 0.2em;
+}
+
+#title-screen .subtitle {
+  font-size: 1.2rem;
+  color: #888;
+  margin-bottom: 2em;
+}
+
+#title-screen .title-cat {
+  margin: 1em auto;
+}
+
+.btn {
+  font-family: 'Zen Maru Gothic', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  padding: 0.6em 2em;
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.btn:hover { transform: scale(1.05); }
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: #e8824e;
+  color: white;
+  box-shadow: 0 4px 0 #c46a3a;
+}
+
+.btn-primary:active {
+  box-shadow: 0 2px 0 #c46a3a;
+  margin-top: 2px;
+}
+
+/* ゲーム画面 */
+#game-screen {
+  display: none;
+  animation: fadeIn 0.3s;
+}
+
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5em 0;
+}
+
+.game-header h2 {
+  font-size: 1.5rem;
+  color: #e8824e;
+}
+
+.timer {
+  font-size: 1.8rem;
+  font-weight: 900;
+  color: #3c3c3c;
+  min-width: 140px;
+  text-align: right;
+}
+
+.timer.warning { color: #e85050; }
+
+.canvas-wrap {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  padding: 8px;
+  margin-bottom: 0.8em;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  border-radius: 12px;
+}
+
+.sliders {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4em 1.5em;
+}
+
+.slider-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  background: white;
+  border-radius: 12px;
+  padding: 0.5em 1em;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+}
+
+.slider-group label {
+  font-size: 0.9rem;
+  font-weight: 700;
+  min-width: 6em;
+  color: #555;
+}
+
+.slider-group input[type="range"] {
+  flex: 1;
+  accent-color: #e8824e;
+  height: 6px;
+}
+
+.game-footer {
+  text-align: center;
+  margin-top: 0.8em;
+}
+
+/* 結果画面 */
+#result-screen {
+  display: none;
+  text-align: center;
+  animation: fadeIn 0.5s;
+}
+
+#result-screen h2 {
+  font-size: 2rem;
+  color: #e8824e;
+  margin-bottom: 0.3em;
+}
+
+.score-display {
+  font-size: 5rem;
+  font-weight: 900;
+  color: #3c3c3c;
+  margin: 0.2em 0;
+}
+
+.score-display span {
+  font-size: 2rem;
+  color: #888;
+}
+
+.score-comment {
+  font-size: 1.4rem;
+  margin-bottom: 0.5em;
+  color: #666;
+}
+
+.result-canvas-wrap {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  padding: 8px;
+  margin: 1em auto;
+  max-width: 700px;
+}
+
+.result-canvas-wrap canvas {
+  width: 100%;
+}
+
+.result-buttons {
+  margin-top: 1em;
+  display: flex;
+  justify-content: center;
+  gap: 1em;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- タイトル画面 -->
+  <div id="title-screen">
+    <h1>ねこえがく</h1>
+    <p class="subtitle">数式をいじって、ねこを描こう！</p>
+    <canvas id="title-canvas" width="800" height="400" class="title-cat"></canvas>
+    <br>
+    <button class="btn btn-primary" onclick="startGame()">はじめる</button>
+  </div>
+
+  <!-- ゲーム画面 -->
+  <div id="game-screen">
+    <div class="game-header">
+      <h2>ねこえがく</h2>
+      <div class="timer" id="timer">⏱ 60.0秒</div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="game-canvas" width="800" height="400"></canvas>
+    </div>
+    <div class="sliders">
+      <div class="slider-group">
+        <label>🔺 耳の高さ</label>
+        <input type="range" id="sl-earHeight" min="10" max="150" step="1">
+      </div>
+      <div class="slider-group">
+        <label>↔ 耳の間隔</label>
+        <input type="range" id="sl-earGap" min="10" max="80" step="1">
+      </div>
+      <div class="slider-group">
+        <label>✦ 耳のとがり</label>
+        <input type="range" id="sl-earWidth" min="8" max="60" step="1">
+      </div>
+      <div class="slider-group">
+        <label>⤴ しっぽ</label>
+        <input type="range" id="sl-tailHeight" min="0" max="150" step="1">
+      </div>
+      <div class="slider-group">
+        <label>〰 足の長さ</label>
+        <input type="range" id="sl-feetAmp" min="5" max="60" step="1">
+      </div>
+      <div class="slider-group">
+        <label>🦶 足の本数</label>
+        <input type="range" id="sl-feetFreq" min="1" max="8" step="0.1">
+      </div>
+      <div class="slider-group">
+        <label>⇄ 足の位置</label>
+        <input type="range" id="sl-feetPhase" min="-3.14" max="3.14" step="0.05">
+      </div>
+    </div>
+    <div class="game-footer">
+      <button class="btn btn-primary" onclick="finishGame()">できた！</button>
+    </div>
+  </div>
+
+  <!-- 結果画面 -->
+  <div id="result-screen">
+    <h2>けっか</h2>
+    <div class="score-display" id="score-value">0<span>点</span></div>
+    <div class="score-comment" id="score-comment"></div>
+    <div class="result-canvas-wrap">
+      <canvas id="result-canvas" width="800" height="400"></canvas>
+    </div>
+    <div class="result-buttons">
+      <button class="btn btn-primary" onclick="backToTitle()">もういちど</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// 正解の画像（手描きイラスト）
+// ============================================================
+const headImg = new Image();
+const tailImg = new Image();
+let imagesLoaded = false;
+
+// 画像から抽出した輪郭の参照y座標
+let refTopY = null;
+let refBottomY = null;
+
+function loadImages() {
+  return new Promise((resolve) => {
+    let loaded = 0;
+    const onLoad = () => { if (++loaded === 2) resolve(); };
+    headImg.src = 'img/head.png';
+    tailImg.src = 'img/tail.png';
+    headImg.onload = onLoad;
+    tailImg.onload = onLoad;
+  });
+}
+
+// プレイヤーの初期値（ずらしておく）
+const player = {
+  earHeight: 50,
+  earGap: 30,
+  earWidth: 40,
+  tailHeight: 30,
+  feetAmp: 20,
+  feetFreq: 2.5,
+  feetPhase: 0.8,
+};
+
+// ============================================================
+// 描画座標系の基本定数
+// ============================================================
+const CAT = {
+  noseX: 0.07,    // 顔の先端 (比率)
+  tailX: 0.92,    // しっぽの先端
+  noseY: 0.58,    // 顔の先端のy
+  backY: 0.30,    // 背中のy
+  bottomY: 0.78,  // 足の一番下あたり
+  earCenterX: 0.17, // 耳の中心x
+  eyeY: 0.46,     // 目のy
+  eye1X: 0.12,    // 左目x
+  eye2X: 0.19,    // 右目x
+};
+
+// ============================================================
+// 上の線のy座標を計算
+// ============================================================
+function getTopY(xRatio, params, W, H) {
+  const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX); // 0→1
+  if (t < 0 || t > 1) return CAT.noseY * H;
+
+  const backY = CAT.backY * H;
+  const noseY = CAT.noseY * H;
+
+  // 顔の左輪郭（左端で下に張り出す）
+  const faceT = Math.max(0, 1 - t * 6);
+  const faceY = faceT * faceT * (noseY - backY);
+
+  // 耳のピーク (ガウシアン)
+  const ear1X = (CAT.earCenterX - params.earGap / W) * W;
+  const ear2X = (CAT.earCenterX + params.earGap / W) * W;
+  const x = xRatio * W;
+  const ear1 = params.earHeight * Math.exp(-((x - ear1X) ** 2) / (2 * params.earWidth ** 2));
+  const ear2 = params.earHeight * Math.exp(-((x - ear2X) ** 2) / (2 * params.earWidth ** 2));
+
+  // しっぽ（右端で上に跳ねる）
+  const tailStart = 0.82;
+  const tailT = Math.max(0, (t - tailStart) / (1 - tailStart));
+  const tail = params.tailHeight * tailT * tailT;
+
+  return backY + faceY - ear1 - ear2 - tail;
+}
+
+// ============================================================
+// 下の線のy座標を計算
+// ============================================================
+function getBottomY(xRatio, params, W, H) {
+  const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX);
+  if (t < 0 || t > 1) return CAT.noseY * H;
+
+  const noseY = CAT.noseY * H;
+  const backY = CAT.backY * H;
+  const tailTipY = backY - params.tailHeight; // しっぽ先端のy
+  const baseY = noseY * (1 - t) + tailTipY * t; // 直線補間
+
+  // エンベロープ（左端と右端で0に）
+  const env = Math.sin(Math.PI * t);
+
+  // 足のsin波
+  const waveBase = (CAT.bottomY * H - noseY) * 0.7; // 基本の足の張り出し
+  const wave = params.feetAmp * Math.sin(params.feetFreq * Math.PI * 2 * t + params.feetPhase);
+
+  return baseY + env * (waveBase + wave);
+}
+
+// ============================================================
+// ねこを描画
+// ============================================================
+function drawCat(ctx, params, color, lineWidth, alpha) {
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // 上の線
+  ctx.beginPath();
+  for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(CAT.tailX * W); px++) {
+    const xr = px / W;
+    const y = getTopY(xr, params, W, H);
+    if (px === Math.floor(CAT.noseX * W)) ctx.moveTo(px, y);
+    else ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+
+  // 下の線
+  ctx.beginPath();
+  for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(CAT.tailX * W); px++) {
+    const xr = px / W;
+    const y = getBottomY(xr, params, W, H);
+    if (px === Math.floor(CAT.noseX * W)) ctx.moveTo(px, y);
+    else ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+
+  // 目（顔の中に2つの縦長楕円）
+  ctx.fillStyle = color;
+  const eyeW = W * 0.012;
+  const eyeH = H * 0.045;
+  const eyeY = CAT.eyeY * H;
+
+  ctx.beginPath();
+  ctx.ellipse(CAT.eye1X * W, eyeY, eyeW, eyeH, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.ellipse(CAT.eye2X * W, eyeY, eyeW, eyeH, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ============================================================
+// 正解画像の描画
+// ============================================================
+function drawTargetImage(ctx, alpha) {
+  if (!imagesLoaded) return;
+  const W = ctx.canvas.width;   // 800
+  const H = ctx.canvas.height;  // 400
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  // head.png を左半分、tail.png を右半分に描画
+  ctx.drawImage(headImg, 0, 0, W / 2, H);
+  ctx.drawImage(tailImg, W / 2, 0, W / 2, H);
+  ctx.restore();
+}
+
+// ============================================================
+// 画像から輪郭を抽出（スコア計算用）
+// ============================================================
+function extractContours() {
+  const W = 800, H = 400;
+
+  // オフスクリーンCanvasに正解画像を描画
+  const offscreen = document.createElement('canvas');
+  offscreen.width = W;
+  offscreen.height = H;
+  const octx = offscreen.getContext('2d');
+  drawTargetImage(octx, 1.0);
+
+  // ピクセルデータ取得
+  const imageData = octx.getImageData(0, 0, W, H);
+  const pixels = imageData.data;
+
+  const startPx = Math.floor(CAT.noseX * W);
+  const endPx = Math.ceil(CAT.tailX * W);
+  const sampleCount = Math.floor((endPx - startPx) / 2) + 1;
+
+  refTopY = new Float64Array(sampleCount);
+  refBottomY = new Float64Array(sampleCount);
+
+  let idx = 0;
+  for (let px = startPx; px <= endPx; px += 2) {
+    let topFound = -1;
+    let bottomFound = -1;
+
+    // 上からスキャン → 最初の不透明ピクセル = 上の輪郭
+    for (let y = 0; y < H; y++) {
+      if (pixels[(y * W + px) * 4 + 3] > 128) {
+        topFound = y;
+        break;
+      }
+    }
+
+    // 下からスキャン → 最初の不透明ピクセル = 下の輪郭
+    for (let y = H - 1; y >= 0; y--) {
+      if (pixels[(y * W + px) * 4 + 3] > 128) {
+        bottomFound = y;
+        break;
+      }
+    }
+
+    // ピクセルが見つからなかった列は前の値を引き継ぐ
+    if (topFound === -1) topFound = idx > 0 ? refTopY[idx - 1] : CAT.backY * H;
+    if (bottomFound === -1) bottomFound = idx > 0 ? refBottomY[idx - 1] : CAT.bottomY * H;
+
+    refTopY[idx] = topFound;
+    refBottomY[idx] = bottomFound;
+    idx++;
+  }
+
+  // 画像の繋ぎ目付近を平滑化（5サンプル窓）
+  smoothContour(refTopY, 3);
+  smoothContour(refBottomY, 3);
+}
+
+function smoothContour(arr, radius) {
+  const copy = new Float64Array(arr);
+  for (let i = radius; i < arr.length - radius; i++) {
+    let sum = 0;
+    for (let j = -radius; j <= radius; j++) sum += copy[i + j];
+    arr[i] = sum / (radius * 2 + 1);
+  }
+}
+
+// ============================================================
+// ゲーム状態
+// ============================================================
+let gameState = 'title'; // title | playing | result
+let timeLeft = 60.0;
+let timerInterval = null;
+
+// ============================================================
+// スライダー ↔ プレイヤーパラメータの同期
+// ============================================================
+const sliderMap = {
+  'sl-earHeight': 'earHeight',
+  'sl-earGap': 'earGap',
+  'sl-earWidth': 'earWidth',
+  'sl-tailHeight': 'tailHeight',
+  'sl-feetAmp': 'feetAmp',
+  'sl-feetFreq': 'feetFreq',
+  'sl-feetPhase': 'feetPhase',
+};
+
+function syncSlidersFromPlayer() {
+  for (const [id, key] of Object.entries(sliderMap)) {
+    document.getElementById(id).value = player[key];
+  }
+}
+
+function syncPlayerFromSliders() {
+  for (const [id, key] of Object.entries(sliderMap)) {
+    player[key] = parseFloat(document.getElementById(id).value);
+  }
+}
+
+// スライダーのイベント
+for (const id of Object.keys(sliderMap)) {
+  document.getElementById(id).addEventListener('input', () => {
+    syncPlayerFromSliders();
+    if (gameState === 'playing') renderGame();
+  });
+}
+
+// ============================================================
+// 描画
+// ============================================================
+function renderGame() {
+  const canvas = document.getElementById('game-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 背景グリッド（薄く）
+  drawGrid(ctx, canvas.width, canvas.height);
+
+  // 正解のねこ（うっすら）
+  drawTargetImage(ctx, 0.18);
+
+  // プレイヤーのねこ
+  drawCat(ctx, player, '#2c2c2c', 5, 1.0);
+}
+
+function renderTitle() {
+  const canvas = document.getElementById('title-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawTargetImage(ctx, 0.6);
+}
+
+function renderResult() {
+  const canvas = document.getElementById('result-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawGrid(ctx, canvas.width, canvas.height);
+  // 正解
+  drawTargetImage(ctx, 0.35);
+  // プレイヤー
+  drawCat(ctx, player, '#2c2c2c', 5, 1.0);
+}
+
+function drawGrid(ctx, W, H) {
+  ctx.save();
+  ctx.strokeStyle = '#eee';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= W; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y <= H; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ============================================================
+// スコア計算
+// ============================================================
+function calculateScore() {
+  if (!refTopY || !refBottomY) return 0;
+
+  const W = 800, H = 400;
+  let totalError = 0;
+  let count = 0;
+
+  const startPx = Math.floor(CAT.noseX * W);
+  const endPx = Math.ceil(CAT.tailX * W);
+
+  let idx = 0;
+  for (let px = startPx; px <= endPx; px += 2) {
+    const xr = px / W;
+    const pTop = getTopY(xr, player, W, H);
+    const pBot = getBottomY(xr, player, W, H);
+
+    const tTop = refTopY[idx];
+    const tBot = refBottomY[idx];
+    idx++;
+
+    totalError += (tTop - pTop) ** 2;
+    totalError += (tBot - pBot) ** 2;
+    count += 2;
+  }
+
+  const rmse = Math.sqrt(totalError / count);
+  // rmse 0 → 100点, rmse 80以上 → 0点
+  const score = Math.max(0, Math.round(100 * Math.max(0, 1 - rmse / 80)));
+  return score;
+}
+
+function getScoreComment(score) {
+  if (score >= 85) return 'すごすぎ！天才ねこ絵師！🐱✨';
+  if (score >= 70) return 'すごい！にゃかなかやるね！';
+  if (score >= 50) return 'いい感じ！もうちょっと！';
+  if (score >= 30) return 'ねこ…かな？';
+  if (score >= 15) return 'なにか別の生き物かも…';
+  return 'これは…数学の勉強から始めよう';
+}
+
+// ============================================================
+// 画面遷移
+// ============================================================
+function showScreen(name) {
+  document.getElementById('title-screen').style.display = name === 'title' ? 'block' : 'none';
+  document.getElementById('game-screen').style.display = name === 'game' ? 'block' : 'none';
+  document.getElementById('result-screen').style.display = name === 'result' ? 'block' : 'none';
+}
+
+function startGame() {
+  gameState = 'playing';
+  timeLeft = 60.0;
+
+  // プレイヤーパラメータをリセット
+  player.earHeight = 50;
+  player.earGap = 30;
+  player.earWidth = 40;
+  player.tailHeight = 30;
+  player.feetAmp = 20;
+  player.feetFreq = 2.5;
+  player.feetPhase = 0.8;
+
+  syncSlidersFromPlayer();
+  showScreen('game');
+  renderGame();
+  updateTimerDisplay();
+
+  timerInterval = setInterval(() => {
+    timeLeft -= 0.1;
+    if (timeLeft <= 0) {
+      timeLeft = 0;
+      finishGame();
+    }
+    updateTimerDisplay();
+  }, 100);
+}
+
+function updateTimerDisplay() {
+  const el = document.getElementById('timer');
+  el.textContent = `⏱ ${timeLeft.toFixed(1)}秒`;
+  el.classList.toggle('warning', timeLeft <= 10);
+}
+
+function finishGame() {
+  if (gameState !== 'playing') return;
+  gameState = 'result';
+  clearInterval(timerInterval);
+
+  const score = calculateScore();
+  document.getElementById('score-value').innerHTML = `${score}<span>点</span>`;
+  document.getElementById('score-comment').textContent = getScoreComment(score);
+
+  showScreen('result');
+  renderResult();
+}
+
+function backToTitle() {
+  gameState = 'title';
+  showScreen('title');
+  renderTitle();
+}
+
+// ============================================================
+// 初期化
+// ============================================================
+loadImages().then(() => {
+  imagesLoaded = true;
+  extractContours();
+  showScreen('title');
+  renderTitle();
+});
+</script>
+</body>
+</html>
