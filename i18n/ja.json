@@ -1,0 +1,27 @@
+{
+  "title": "ねこえがく",
+  "subtitle": "数式をいじって、ねこを描こう！",
+  "startButton": "はじめる",
+  "timerFormat": "⏱ {time}秒",
+  "finishButton": "できた！",
+  "resultHeader": "けっか",
+  "scoreUnit": "点",
+  "retryButton": "もういちど",
+  "sliders": {
+    "earHeight": "🔺 耳の高さ",
+    "earGap": "↔ 耳の間隔",
+    "earWidth": "✦ 耳のとがり",
+    "tailHeight": "⤴ しっぽ",
+    "feetAmp": "〰 足の長さ",
+    "feetFreq": "🦶 足の本数",
+    "feetPhase": "⇄ 足の位置"
+  },
+  "scoreComments": [
+    { "min": 85, "text": "すごすぎ！天才ねこ絵師！🐱✨" },
+    { "min": 70, "text": "すごい！にゃかなかやるね！" },
+    { "min": 50, "text": "いい感じ！もうちょっと！" },
+    { "min": 30, "text": "ねこ…かな？" },
+    { "min": 15, "text": "なにか別の生き物かも…" },
+    { "min": 0,  "text": "これは…数学の勉強から始めよう" }
+  ]
+}

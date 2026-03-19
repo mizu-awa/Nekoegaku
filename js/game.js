@@ -1,0 +1,470 @@
+// ============================================================
+// 設定・ラベルの読み込み
+// ============================================================
+let CFG = {};
+let LANG = {};
+
+async function loadConfig() {
+  const res = await fetch('config/settings.json');
+  CFG = await res.json();
+}
+
+async function loadLang() {
+  const browserLang = navigator.language.slice(0, 2);
+  const langCode = browserLang === 'ja' ? 'ja' : 'en';
+  document.documentElement.lang = langCode;
+  const res = await fetch(`i18n/${langCode}.json`);
+  LANG = await res.json();
+}
+
+function applyLabels() {
+  document.getElementById('title-heading').textContent = LANG.title;
+  document.getElementById('title-subtitle').textContent = LANG.subtitle;
+  document.getElementById('start-btn').textContent = LANG.startButton;
+  document.getElementById('game-heading').textContent = LANG.title;
+  document.getElementById('finish-btn').textContent = LANG.finishButton;
+  document.getElementById('result-heading').textContent = LANG.resultHeader;
+  document.getElementById('retry-btn').textContent = LANG.retryButton;
+  document.title = LANG.title;
+
+  // スライダーラベル
+  const sliderKeys = ['earHeight', 'earGap', 'earWidth', 'tailHeight', 'feetAmp', 'feetFreq', 'feetPhase'];
+  for (const key of sliderKeys) {
+    document.getElementById(`label-${key}`).textContent = LANG.sliders[key];
+  }
+}
+
+function applySliderRanges() {
+  for (const [key, range] of Object.entries(CFG.sliders)) {
+    const el = document.getElementById(`sl-${key}`);
+    el.min = range.min;
+    el.max = range.max;
+    el.step = range.step;
+  }
+}
+
+// ============================================================
+// 正解の画像（手描きイラスト）
+// ============================================================
+const headImg = new Image();
+const tailImg = new Image();
+let imagesLoaded = false;
+
+let refTopY = null;
+let refBottomY = null;
+
+function loadImages() {
+  return new Promise((resolve) => {
+    let loaded = 0;
+    const onLoad = () => { if (++loaded === 2) resolve(); };
+    headImg.src = 'img/head.png';
+    tailImg.src = 'img/tail.png';
+    headImg.onload = onLoad;
+    tailImg.onload = onLoad;
+  });
+}
+
+// プレイヤーパラメータ
+const player = {};
+
+function resetPlayer() {
+  Object.assign(player, CFG.playerDefaults);
+}
+
+// ============================================================
+// 上の線のy座標を計算
+// ============================================================
+function getTopY(xRatio, params, W, H) {
+  const CAT = CFG.cat;
+  const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX);
+  if (t < 0 || t > 1) return CAT.noseY * H;
+
+  const backY = CAT.backY * H;
+  const noseY = CAT.noseY * H;
+
+  const faceT = Math.max(0, 1 - t * CFG.topLine.faceDecayRate);
+  const faceY = faceT * (noseY - backY);
+
+  const ear1X = (CAT.earCenterX - params.earGap / W) * W;
+  const ear2X = (CAT.earCenterX + params.earGap / W) * W;
+  const x = xRatio * W;
+  const ear1 = params.earHeight * Math.exp(-((x - ear1X) ** 2) / (2 * params.earWidth ** 2));
+  const ear2 = params.earHeight * Math.exp(-((x - ear2X) ** 2) / (2 * params.earWidth ** 2));
+
+  const tailStart = CFG.topLine.tailStart;
+  const tailT = Math.max(0, (t - tailStart) / (1 - tailStart));
+  const smoothTail = tailT * tailT * (3 - 2 * tailT);
+  const tail = params.tailHeight * smoothTail;
+
+  return backY + faceY - ear1 - ear2 - tail;
+}
+
+// ============================================================
+// 下の線のy座標を計算
+// ============================================================
+function getBottomY(xRatio, params, W, H) {
+  const CAT = CFG.cat;
+  const BL = CFG.bottomLine;
+  const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX);
+  if (t < 0 || t > 1) return CAT.noseY * H;
+
+  const noseY = CAT.noseY * H;
+  const backY = CAT.backY * H;
+  const bottomBaseY = CAT.bottomY * H;
+
+  const buttT = (CAT.buttX - CAT.noseX) / (CAT.tailX - CAT.noseX);
+
+  let baseY;
+  if (t < BL.faceEndT) {
+    baseY = noseY + (bottomBaseY - noseY) * (t / BL.faceEndT);
+  } else {
+    baseY = bottomBaseY;
+  }
+
+  if (t > BL.buttRiseStart && t <= buttT) {
+    const bt = (t - BL.buttRiseStart) / (buttT - BL.buttRiseStart);
+    const smooth = bt * bt * (3 - 2 * bt);
+    baseY = bottomBaseY + (backY - bottomBaseY) * smooth;
+  } else if (t > buttT) {
+    baseY = backY;
+  }
+
+  const feetEnvLeft = Math.min(1, Math.max(0, (t - BL.feetStartT) / BL.feetFadeWidth));
+  const feetEnvRight = Math.min(1, Math.max(0, (BL.feetEndT - t) / BL.feetFadeWidth));
+  const feetEnv = feetEnvLeft * feetEnvRight;
+  const wave = params.feetAmp * Math.sin(params.feetFreq * Math.PI * 2 * t + params.feetPhase);
+
+  return baseY + feetEnv * wave;
+}
+
+// ============================================================
+// ねこを描画
+// ============================================================
+function drawCat(ctx, params, color, lineWidth, alpha) {
+  const CAT = CFG.cat;
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // 上の線
+  ctx.beginPath();
+  for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(CAT.tailX * W); px++) {
+    const xr = px / W;
+    const y = getTopY(xr, params, W, H);
+    if (px === Math.floor(CAT.noseX * W)) ctx.moveTo(px, y);
+    else ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+
+  // 下の線
+  ctx.beginPath();
+  for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(CAT.buttX * W); px++) {
+    const xr = px / W;
+    const y = getBottomY(xr, params, W, H);
+    if (px === Math.floor(CAT.noseX * W)) ctx.moveTo(px, y);
+    else ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+
+  // お尻の垂直線
+  const buttPx = Math.round(CAT.buttX * W);
+  const buttBottom = getBottomY(CAT.buttX, params, W, H);
+  const buttTop = getTopY(CAT.buttX, params, W, H);
+  ctx.beginPath();
+  ctx.moveTo(buttPx, buttBottom);
+  ctx.lineTo(buttPx, buttTop);
+  ctx.stroke();
+
+  // 目
+  ctx.fillStyle = color;
+  const eyeW = W * CFG.drawing.eyeWidthRatio;
+  const eyeH = H * CFG.drawing.eyeHeightRatio;
+  const eyeY = CAT.eyeY * H;
+
+  ctx.beginPath();
+  ctx.ellipse(CAT.eye1X * W, eyeY, eyeW, eyeH, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.ellipse(CAT.eye2X * W, eyeY, eyeW, eyeH, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ============================================================
+// 正解画像の描画
+// ============================================================
+function drawTargetImage(ctx, alpha) {
+  if (!imagesLoaded) return;
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(headImg, 0, 0, W / 2, H);
+  ctx.drawImage(tailImg, W / 2, 0, W / 2, H);
+  ctx.restore();
+}
+
+// ============================================================
+// 画像から輪郭を抽出（スコア計算用）
+// ============================================================
+function extractContours() {
+  const W = CFG.canvas.width;
+  const H = CFG.canvas.height;
+  const CAT = CFG.cat;
+  const SC = CFG.scoring;
+
+  const offscreen = document.createElement('canvas');
+  offscreen.width = W;
+  offscreen.height = H;
+  const octx = offscreen.getContext('2d');
+  drawTargetImage(octx, 1.0);
+
+  const imageData = octx.getImageData(0, 0, W, H);
+  const pixels = imageData.data;
+
+  const startPx = Math.floor(CAT.noseX * W);
+  const endPx = Math.ceil(CAT.tailX * W);
+  const sampleCount = Math.floor((endPx - startPx) / SC.sampleStep) + 1;
+
+  refTopY = new Float64Array(sampleCount);
+  refBottomY = new Float64Array(sampleCount);
+
+  let idx = 0;
+  for (let px = startPx; px <= endPx; px += SC.sampleStep) {
+    let topFound = -1;
+    let bottomFound = -1;
+
+    for (let y = 0; y < H; y++) {
+      if (pixels[(y * W + px) * 4 + 3] > SC.alphaThreshold) {
+        topFound = y;
+        break;
+      }
+    }
+
+    for (let y = H - 1; y >= 0; y--) {
+      if (pixels[(y * W + px) * 4 + 3] > SC.alphaThreshold) {
+        bottomFound = y;
+        break;
+      }
+    }
+
+    if (topFound === -1) topFound = idx > 0 ? refTopY[idx - 1] : CAT.backY * H;
+    if (bottomFound === -1) bottomFound = idx > 0 ? refBottomY[idx - 1] : CAT.bottomY * H;
+
+    refTopY[idx] = topFound;
+    refBottomY[idx] = bottomFound;
+    idx++;
+  }
+
+  smoothContour(refTopY, SC.smoothingRadius);
+  smoothContour(refBottomY, SC.smoothingRadius);
+}
+
+function smoothContour(arr, radius) {
+  const copy = new Float64Array(arr);
+  for (let i = radius; i < arr.length - radius; i++) {
+    let sum = 0;
+    for (let j = -radius; j <= radius; j++) sum += copy[i + j];
+    arr[i] = sum / (radius * 2 + 1);
+  }
+}
+
+// ============================================================
+// ゲーム状態
+// ============================================================
+let gameState = 'title';
+let timeLeft = 0;
+let timerInterval = null;
+
+// ============================================================
+// スライダー ↔ プレイヤーパラメータの同期
+// ============================================================
+const sliderKeys = ['earHeight', 'earGap', 'earWidth', 'tailHeight', 'feetAmp', 'feetFreq', 'feetPhase'];
+
+function syncSlidersFromPlayer() {
+  for (const key of sliderKeys) {
+    document.getElementById(`sl-${key}`).value = player[key];
+  }
+}
+
+function syncPlayerFromSliders() {
+  for (const key of sliderKeys) {
+    player[key] = parseFloat(document.getElementById(`sl-${key}`).value);
+  }
+}
+
+function setupSliderEvents() {
+  for (const key of sliderKeys) {
+    document.getElementById(`sl-${key}`).addEventListener('input', () => {
+      syncPlayerFromSliders();
+      if (gameState === 'playing') renderGame();
+    });
+  }
+}
+
+// ============================================================
+// 描画
+// ============================================================
+function renderGame() {
+  const canvas = document.getElementById('game-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  drawGrid(ctx, canvas.width, canvas.height);
+  drawTargetImage(ctx, CFG.drawing.targetAlphaGame);
+  drawCat(ctx, player, CFG.drawing.playerColor, CFG.drawing.playerLineWidth, 1.0);
+}
+
+function renderTitle() {
+  const canvas = document.getElementById('title-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawTargetImage(ctx, CFG.drawing.targetAlphaTitle);
+}
+
+function renderResult() {
+  const canvas = document.getElementById('result-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawGrid(ctx, canvas.width, canvas.height);
+  drawTargetImage(ctx, CFG.drawing.targetAlphaResult);
+  drawCat(ctx, player, CFG.drawing.playerColor, CFG.drawing.playerLineWidth, 1.0);
+}
+
+function drawGrid(ctx, W, H) {
+  const spacing = CFG.drawing.gridSpacing;
+  ctx.save();
+  ctx.strokeStyle = CFG.drawing.gridColor;
+  ctx.lineWidth = CFG.drawing.gridLineWidth;
+  for (let x = 0; x <= W; x += spacing) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y <= H; y += spacing) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ============================================================
+// スコア計算
+// ============================================================
+function calculateScore() {
+  if (!refTopY || !refBottomY) return 0;
+
+  const W = CFG.canvas.width;
+  const H = CFG.canvas.height;
+  const CAT = CFG.cat;
+  const SC = CFG.scoring;
+  let totalError = 0;
+  let count = 0;
+
+  const startPx = Math.floor(CAT.noseX * W);
+  const endPx = Math.ceil(CAT.tailX * W);
+
+  let idx = 0;
+  for (let px = startPx; px <= endPx; px += SC.sampleStep) {
+    const xr = px / W;
+    const pTop = getTopY(xr, player, W, H);
+    const pBot = getBottomY(xr, player, W, H);
+
+    const tTop = refTopY[idx];
+    const tBot = refBottomY[idx];
+    idx++;
+
+    totalError += (tTop - pTop) ** 2;
+    totalError += (tBot - pBot) ** 2;
+    count += 2;
+  }
+
+  const rmse = Math.sqrt(totalError / count);
+  const score = Math.max(0, Math.round(SC.maxScore * Math.max(0, 1 - rmse / SC.maxRmse)));
+  return score;
+}
+
+function getScoreComment(score) {
+  for (const entry of LANG.scoreComments) {
+    if (score >= entry.min) return entry.text;
+  }
+  return '';
+}
+
+// ============================================================
+// 画面遷移
+// ============================================================
+function showScreen(name) {
+  document.getElementById('title-screen').style.display = name === 'title' ? 'block' : 'none';
+  document.getElementById('game-screen').style.display = name === 'game' ? 'block' : 'none';
+  document.getElementById('result-screen').style.display = name === 'result' ? 'block' : 'none';
+}
+
+function startGame() {
+  gameState = 'playing';
+  timeLeft = CFG.timer.duration;
+
+  resetPlayer();
+  syncSlidersFromPlayer();
+  showScreen('game');
+  renderGame();
+  updateTimerDisplay();
+
+  timerInterval = setInterval(() => {
+    timeLeft -= CFG.timer.intervalMs / 1000;
+    if (timeLeft <= 0) {
+      timeLeft = 0;
+      finishGame();
+    }
+    updateTimerDisplay();
+  }, CFG.timer.intervalMs);
+}
+
+function updateTimerDisplay() {
+  const el = document.getElementById('timer');
+  el.textContent = LANG.timerFormat.replace('{time}', timeLeft.toFixed(1));
+  el.classList.toggle('warning', timeLeft <= CFG.timer.warningThreshold);
+}
+
+function finishGame() {
+  if (gameState !== 'playing') return;
+  gameState = 'result';
+  clearInterval(timerInterval);
+
+  const score = calculateScore();
+  document.getElementById('score-value').innerHTML = `${score}<span>${LANG.scoreUnit}</span>`;
+  document.getElementById('score-comment').textContent = getScoreComment(score);
+
+  showScreen('result');
+  renderResult();
+}
+
+function backToTitle() {
+  gameState = 'title';
+  showScreen('title');
+  renderTitle();
+}
+
+// ============================================================
+// 初期化
+// ============================================================
+async function init() {
+  await Promise.all([loadConfig(), loadLang(), loadImages()]);
+  imagesLoaded = true;
+
+  // 初期パラメータ設定
+  Object.assign(player, CFG.playerInitial);
+
+  applyLabels();
+  applySliderRanges();
+  setupSliderEvents();
+  extractContours();
+  showScreen('title');
+  renderTitle();
+}
+
+init();

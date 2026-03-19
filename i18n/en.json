@@ -1,0 +1,27 @@
+{
+  "title": "Neko Egaku",
+  "subtitle": "Tweak the formulas to draw a cat!",
+  "startButton": "Start",
+  "timerFormat": "⏱ {time}s",
+  "finishButton": "Done!",
+  "resultHeader": "Result",
+  "scoreUnit": "pts",
+  "retryButton": "Try Again",
+  "sliders": {
+    "earHeight": "🔺 Ear Height",
+    "earGap": "↔ Ear Gap",
+    "earWidth": "✦ Ear Sharpness",
+    "tailHeight": "⤴ Tail",
+    "feetAmp": "〰 Leg Length",
+    "feetFreq": "🦶 Leg Count",
+    "feetPhase": "⇄ Leg Position"
+  },
+  "scoreComments": [
+    { "min": 85, "text": "Amazing! You're a genius cat artist! 🐱✨" },
+    { "min": 70, "text": "Great! You're pretty good!" },
+    { "min": 50, "text": "Nice! Almost there!" },
+    { "min": 30, "text": "Is that... a cat?" },
+    { "min": 15, "text": "Might be some other creature..." },
+    { "min": 0,  "text": "Maybe start with some math practice..." }
+  ]
+}
