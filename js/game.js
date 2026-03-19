@@ -52,6 +52,8 @@ let imagesLoaded = false;
 
 let refTopY = null;
 let refBottomY = null;
+let refTopBaseline = null;
+let refBottomBaseline = null;
 
 function loadImages() {
   return new Promise((resolve) => {
@@ -79,24 +81,24 @@ function getTopY(xRatio, params, W, H) {
   const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX);
   if (t < 0 || t > 1) return CAT.noseY * H;
 
+  // LUTベースライン（元画像から抽出した固定パス）
+  const baseline = interpolateBaseline(refTopBaseline, xRatio);
+  if (baseline !== null) {
+    const ears = getEarContribution(xRatio, params, W);
+    const tail = getTailContribution(xRatio, params, W, H);
+    return baseline - ears - tail;
+  }
+
+  // フォールバック: 数式ベースライン
   const backY = CAT.backY * H;
   const noseY = CAT.noseY * H;
-
   const faceT = Math.max(0, 1 - t * CFG.topLine.faceDecayRate);
   const faceY = faceT * (noseY - backY);
 
-  const ear1X = (CAT.earCenterX - params.earGap / W) * W;
-  const ear2X = (CAT.earCenterX + params.earGap / W) * W;
-  const x = xRatio * W;
-  const ear1 = params.earHeight * Math.exp(-((x - ear1X) ** 2) / (2 * params.earWidth ** 2));
-  const ear2 = params.earHeight * Math.exp(-((x - ear2X) ** 2) / (2 * params.earWidth ** 2));
+  const ears = getEarContribution(xRatio, params, W);
+  const tail = getTailContribution(xRatio, params, W, H);
 
-  const tailStart = CFG.topLine.tailStart;
-  const tailT = Math.max(0, (t - tailStart) / (1 - tailStart));
-  const smoothTail = tailT * tailT * (3 - 2 * tailT);
-  const tail = params.tailHeight * smoothTail;
-
-  return backY + faceY - ear1 - ear2 - tail;
+  return backY + faceY - ears - tail;
 }
 
 // ============================================================
@@ -108,6 +110,14 @@ function getBottomY(xRatio, params, W, H) {
   const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX);
   if (t < 0 || t > 1) return CAT.noseY * H;
 
+  // LUTベースライン（元画像から抽出した固定パス）
+  const baseline = interpolateBaseline(refBottomBaseline, xRatio);
+  if (baseline !== null) {
+    const feet = getFeetContribution(xRatio, params, W, H);
+    return baseline + feet;
+  }
+
+  // フォールバック: 数式ベースライン
   const noseY = CAT.noseY * H;
   const backY = CAT.backY * H;
   const bottomBaseY = CAT.bottomY * H;
@@ -129,12 +139,8 @@ function getBottomY(xRatio, params, W, H) {
     baseY = backY;
   }
 
-  const feetEnvLeft = Math.min(1, Math.max(0, (t - BL.feetStartT) / BL.feetFadeWidth));
-  const feetEnvRight = Math.min(1, Math.max(0, (BL.feetEndT - t) / BL.feetFadeWidth));
-  const feetEnv = feetEnvLeft * feetEnvRight;
-  const wave = params.feetAmp * Math.sin(params.feetFreq * Math.PI * 2 * t + params.feetPhase);
-
-  return baseY + feetEnv * wave;
+  const feet = getFeetContribution(xRatio, params, W, H);
+  return baseY + feet;
 }
 
 // ============================================================
@@ -274,6 +280,83 @@ function smoothContour(arr, radius) {
     for (let j = -radius; j <= radius; j++) sum += copy[i + j];
     arr[i] = sum / (radius * 2 + 1);
   }
+}
+
+// ============================================================
+// ベースラインLUT（元画像から固定パスを抽出）
+// ============================================================
+function getEarContribution(xRatio, params, W) {
+  const CAT = CFG.cat;
+  const ear1X = (CAT.earCenterX - params.earGap / W) * W;
+  const ear2X = (CAT.earCenterX + params.earGap / W) * W;
+  const x = xRatio * W;
+  const ear1 = params.earHeight * Math.exp(-((x - ear1X) ** 2) / (2 * params.earWidth ** 2));
+  const ear2 = params.earHeight * Math.exp(-((x - ear2X) ** 2) / (2 * params.earWidth ** 2));
+  return ear1 + ear2;
+}
+
+function getTailContribution(xRatio, params, W, H) {
+  const CAT = CFG.cat;
+  const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX);
+  if (t < 0 || t > 1) return 0;
+  const tailStart = CFG.topLine.tailStart;
+  const tailT = Math.max(0, (t - tailStart) / (1 - tailStart));
+  const smoothTail = tailT * tailT * (3 - 2 * tailT);
+  return params.tailHeight * smoothTail;
+}
+
+function getFeetContribution(xRatio, params, W, H) {
+  const CAT = CFG.cat;
+  const BL = CFG.bottomLine;
+  const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX);
+  if (t < 0 || t > 1) return 0;
+  const feetEnvLeft = Math.min(1, Math.max(0, (t - BL.feetStartT) / BL.feetFadeWidth));
+  const feetEnvRight = Math.min(1, Math.max(0, (BL.feetEndT - t) / BL.feetFadeWidth));
+  const feetEnv = feetEnvLeft * feetEnvRight;
+  const wave = params.feetAmp * Math.sin(params.feetFreq * Math.PI * 2 * t + params.feetPhase);
+  return feetEnv * wave;
+}
+
+function buildBaselineLUT() {
+  if (!refTopY || !refBottomY) return;
+
+  const W = CFG.canvas.width;
+  const H = CFG.canvas.height;
+  const CAT = CFG.cat;
+  const SC = CFG.scoring;
+  const answer = CFG.answerParams;
+
+  const startPx = Math.floor(CAT.noseX * W);
+  const endPx = Math.ceil(CAT.tailX * W);
+  const sampleCount = Math.floor((endPx - startPx) / SC.sampleStep) + 1;
+
+  refTopBaseline = new Float64Array(sampleCount);
+  refBottomBaseline = new Float64Array(sampleCount);
+
+  let idx = 0;
+  for (let px = startPx; px <= endPx; px += SC.sampleStep) {
+    const xr = px / W;
+    // 上線: baseline = refTopY + ears + tail (可変部分を足し戻す)
+    refTopBaseline[idx] = refTopY[idx]
+      + getEarContribution(xr, answer, W)
+      + getTailContribution(xr, answer, W, H);
+    // 下線: baseline = refBottomY - feet (可変部分を引き戻す)
+    refBottomBaseline[idx] = refBottomY[idx]
+      - getFeetContribution(xr, answer, W, H);
+    idx++;
+  }
+}
+
+function interpolateBaseline(lut, xRatio) {
+  if (!lut) return null;
+  const W = CFG.canvas.width;
+  const startPx = Math.floor(CFG.cat.noseX * W);
+  const px = xRatio * W;
+  const idx = (px - startPx) / CFG.scoring.sampleStep;
+  const i0 = Math.max(0, Math.floor(idx));
+  const i1 = Math.min(i0 + 1, lut.length - 1);
+  const frac = idx - Math.floor(idx);
+  return lut[i0] * (1 - frac) + lut[i1] * frac;
 }
 
 // ============================================================
@@ -463,8 +546,147 @@ async function init() {
   applySliderRanges();
   setupSliderEvents();
   extractContours();
+  buildBaselineLUT();
   showScreen('title');
   renderTitle();
 }
+
+// デバッグ用: answerParamsのフィッティング
+// ブラウザコンソールから debugFit() で起動
+// debugSetAnswer({earHeight: 90, earGap: 30, ...}) でパラメータ変更
+window.debugFit = function () {
+  const canvas = document.getElementById('game-canvas') || document.getElementById('title-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // 元画像を描画
+  drawTargetImage(ctx, 0.3);
+
+  // 現在のanswerParamsで曲線を描画（赤）
+  drawCat(ctx, CFG.answerParams, 'red', 2, 0.8);
+
+  console.log('現在の answerParams:', JSON.stringify(CFG.answerParams));
+  console.log('debugSetAnswer({key: value, ...}) でパラメータを変更してください');
+};
+
+window.debugSetAnswer = function (overrides) {
+  Object.assign(CFG.answerParams, overrides);
+  buildBaselineLUT();
+  window.debugFit();
+};
+
+// 自動フィッティング: answerParamsを最適化
+window.autoFit = function () {
+  if (!refTopY || !refBottomY) { console.error('extractContours未実行'); return; }
+
+  const W = CFG.canvas.width;
+  const H = CFG.canvas.height;
+  const CAT = CFG.cat;
+  const SC = CFG.scoring;
+  const startPx = Math.floor(CAT.noseX * W);
+  const endPx = Math.ceil(CAT.tailX * W);
+
+  // 現在の数式ベースラインとの誤差を計算
+  function calcError(params) {
+    let err = 0;
+    let count = 0;
+    let idx = 0;
+    for (let px = startPx; px <= endPx; px += SC.sampleStep) {
+      const xr = px / W;
+      const t = (xr - CAT.noseX) / (CAT.tailX - CAT.noseX);
+      if (t < 0 || t > 1) { idx++; continue; }
+
+      // 上線: refTopY = baseline - ears - tail を期待
+      const ears = getEarContribution(xr, params, W);
+      const tail = getTailContribution(xr, params, W, H);
+      const feet = getFeetContribution(xr, params, W, H);
+
+      // 上線の誤差（LUTなしの直接比較）
+      // getTopY(数式) = backY + faceY - ears - tail
+      // 理想: refTopY[idx] = getTopY(answerParams)
+      // ここでは数式ベースラインは使わず、refTopYとの差を最小化
+      const backY_val = CAT.backY * H;
+      const noseY_val = CAT.noseY * H;
+      const faceT = Math.max(0, 1 - t * CFG.topLine.faceDecayRate);
+      const faceY = faceT * (noseY_val - backY_val);
+      const mathTop = backY_val + faceY - ears - tail;
+
+      // ※自動フィッティングではLUTを使わず、直接refTopYとparamsでの曲線を比較
+      // refTopY = 画像の正解 → paramsでの曲線がこれに近いほど良い
+      err += (refTopY[idx] - mathTop) ** 2;
+
+      // 下線
+      const BL = CFG.bottomLine;
+      const buttT = (CAT.buttX - CAT.noseX) / (CAT.tailX - CAT.noseX);
+      let baseY;
+      if (t < BL.faceEndT) {
+        baseY = noseY_val + (CAT.bottomY * H - noseY_val) * (t / BL.faceEndT);
+      } else {
+        baseY = CAT.bottomY * H;
+      }
+      if (t > BL.buttRiseStart && t <= buttT) {
+        const bt = (t - BL.buttRiseStart) / (buttT - BL.buttRiseStart);
+        const smooth = bt * bt * (3 - 2 * bt);
+        baseY = CAT.bottomY * H + (backY_val - CAT.bottomY * H) * smooth;
+      } else if (t > buttT) {
+        baseY = backY_val;
+      }
+      const mathBot = baseY + feet;
+      err += (refBottomY[idx] - mathBot) ** 2;
+
+      count += 2;
+      idx++;
+    }
+    return Math.sqrt(err / count);
+  }
+
+  // グリッドサーチ + 局所最適化
+  let best = { ...CFG.answerParams };
+  let bestErr = calcError(best);
+  console.log('初期誤差:', bestErr.toFixed(2));
+
+  // 各パラメータの探索範囲
+  const ranges = {
+    earHeight: [30, 150, 5],
+    earGap:    [5, 60, 3],
+    earWidth:  [8, 50, 3],
+    tailHeight:[20, 150, 5],
+    feetAmp:   [10, 70, 3],
+    feetFreq:  [2.0, 8.0, 0.2],
+    feetPhase: [-3.14, 3.14, 0.15]
+  };
+
+  // 3ラウンドの反復最適化
+  for (let round = 0; round < 3; round++) {
+    for (const [key, [min, max, step]] of Object.entries(ranges)) {
+      let localBest = best[key];
+      let localBestErr = bestErr;
+      const s = step / (round + 1); // ラウンドごとにステップを細かく
+      for (let v = min; v <= max; v += s) {
+        const trial = { ...best, [key]: v };
+        const e = calcError(trial);
+        if (e < localBestErr) {
+          localBestErr = e;
+          localBest = v;
+        }
+      }
+      best[key] = localBest;
+      bestErr = localBestErr;
+    }
+    console.log(`ラウンド${round + 1} 誤差: ${bestErr.toFixed(2)}`);
+  }
+
+  // 小数点を丸める
+  for (const key of Object.keys(ranges)) {
+    best[key] = Math.round(best[key] * 100) / 100;
+  }
+
+  console.log('最適化結果 answerParams:', JSON.stringify(best, null, 2));
+  console.log('最終誤差:', calcError(best).toFixed(2));
+  console.log('適用するには: debugSetAnswer(' + JSON.stringify(best) + ')');
+  return best;
+};
 
 init();

@@ -4,7 +4,7 @@
     "height": 400
   },
   "timer": {
-    "duration": 60.0,
+    "duration": 200.0,
     "intervalMs": 100,
     "warningThreshold": 10
   },
@@ -19,6 +19,15 @@
     "eyeY": 0.40,
     "eye1X": 0.14,
     "eye2X": 0.20
+  },
+  "answerParams": {
+    "earHeight": 90,
+    "earGap": 30,
+    "earWidth": 20,
+    "tailHeight": 80,
+    "feetAmp": 40,
+    "feetFreq": 4.5,
+    "feetPhase": 0.0
   },
   "playerDefaults": {
     "earHeight": 50,
