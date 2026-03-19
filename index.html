@@ -247,7 +247,7 @@ canvas {
       </div>
       <div class="slider-group">
         <label>〰 足の長さ</label>
-        <input type="range" id="sl-feetAmp" min="5" max="60" step="1">
+        <input type="range" id="sl-feetAmp" min="5" max="80" step="1">
       </div>
       <div class="slider-group">
         <label>🦶 足の本数</label>
@@ -316,15 +316,16 @@ const player = {
 // 描画座標系の基本定数
 // ============================================================
 const CAT = {
-  noseX: 0.025,    // 顔の先端 (画像から抽出)
+  noseX: 0.025,    // 顔の先端
   tailX: 0.96,     // しっぽの先端
-  noseY: 0.445,    // 顔の先端のy
-  backY: 0.273,    // 背中のy
-  bottomY: 0.78,   // 足の波の中心あたり
-  earCenterX: 0.183, // 耳の中心x（左耳0.10、右耳0.265の中点）
-  eyeY: 0.34,      // 目のy
-  eye1X: 0.12,     // 左目x
-  eye2X: 0.19,     // 右目x
+  buttX: 0.89,     // お尻の垂直線のx位置
+  noseY: 0.49,     // 顔の先端のy（画像から再計測）
+  backY: 0.25,     // 背中のy
+  bottomY: 0.65,   // 足の波の中心
+  earCenterX: 0.175, // 耳の中心x
+  eyeY: 0.40,      // 目のy
+  eye1X: 0.14,     // 左目x
+  eye2X: 0.20,     // 右目x
 };
 
 // ============================================================
@@ -337,10 +338,9 @@ function getTopY(xRatio, params, W, H) {
   const backY = CAT.backY * H;
   const noseY = CAT.noseY * H;
 
-  // 顔の左輪郭（左端で下に張り出す）
-  // t=0.05（x≈0.07）付近でゼロに。耳（t≈0.08）には影響しない
-  const faceT = Math.max(0, 1 - t * 20);
-  const faceY = faceT * faceT * (noseY - backY);
+  // 顔の左輪郭（線形減衰、t≈0.083でゼロに — 耳の手前まで）
+  const faceT = Math.max(0, 1 - t * 12);
+  const faceY = faceT * (noseY - backY); // 線形（画像の直線的な顔輪郭に合わせる）
 
   // 耳のピーク (ガウシアン)
   const ear1X = (CAT.earCenterX - params.earGap / W) * W;
@@ -349,11 +349,11 @@ function getTopY(xRatio, params, W, H) {
   const ear1 = params.earHeight * Math.exp(-((x - ear1X) ** 2) / (2 * params.earWidth ** 2));
   const ear2 = params.earHeight * Math.exp(-((x - ear2X) ** 2) / (2 * params.earWidth ** 2));
 
-  // しっぽ（右端で上に跳ねる）
-  // 画像データ: しっぽはx≈0.885（t≈0.92）から上昇開始
-  const tailStart = 0.92;
+  // しっぽ（t=0.85から滑らかに上昇、smoothstepで先端が丸い）
+  const tailStart = 0.85;
   const tailT = Math.max(0, (t - tailStart) / (1 - tailStart));
-  const tail = params.tailHeight * tailT * tailT;
+  const smoothTail = tailT * tailT * (3 - 2 * tailT);
+  const tail = params.tailHeight * smoothTail;
 
   return backY + faceY - ear1 - ear2 - tail;
 }
@@ -368,33 +368,34 @@ function getBottomY(xRatio, params, W, H) {
   const noseY = CAT.noseY * H;
   const backY = CAT.backY * H;
   const bottomBaseY = CAT.bottomY * H;
-  const tailTipY = backY - params.tailHeight; // しっぽ先端のy
 
-  // 顔の下輪郭（固定）: 鼻先(noseY) → 足の底(bottomBaseY) へ smoothstep 遷移
-  // 画像データ: x≈0.025→0.145 で遷移（t≈0→0.13）
-  const faceEndT = 0.13;
+  // お尻のt位置を計算
+  const buttT = (CAT.buttX - CAT.noseX) / (CAT.tailX - CAT.noseX); // ≈0.925
+
+  // 顔の下輪郭: 鼻先(noseY) → 足の底(bottomBaseY) へ線形遷移
+  const faceEndT = 0.10;
   let baseY;
   if (t < faceEndT) {
-    const ft = t / faceEndT;
-    const smooth = ft * ft * (3 - 2 * ft);
-    baseY = noseY + (bottomBaseY - noseY) * smooth;
+    baseY = noseY + (bottomBaseY - noseY) * (t / faceEndT);
   } else {
     baseY = bottomBaseY;
   }
 
-  // お尻の急上昇（固定）: x≈0.925（t≈0.96）からしっぽ先端へ急カーブ
-  // 画像データ: x=0.925→0.960 で y=0.72→0.15 へ急上昇
-  const buttRiseStart = 0.96;
-  if (t > buttRiseStart) {
-    const bt = (t - buttRiseStart) / (1 - buttRiseStart);
-    baseY = bottomBaseY + (tailTipY - bottomBaseY) * bt * bt;
+  // お尻の上昇: bottomBaseY → backY へ smoothstep（お尻の垂直線で上の線と合流）
+  const buttRiseStart = 0.90;
+  if (t > buttRiseStart && t <= buttT) {
+    const bt = (t - buttRiseStart) / (buttT - buttRiseStart);
+    const smooth = bt * bt * (3 - 2 * bt);
+    baseY = bottomBaseY + (backY - bottomBaseY) * smooth;
+  } else if (t > buttT) {
+    baseY = backY;
   }
 
-  // 足のsin波（顔とお尻の領域ではフェードアウト）
-  const feetStartT = 0.15;
-  const feetEndT = 0.95;
-  const feetEnvLeft = Math.min(1, Math.max(0, (t - feetStartT) / 0.05));
-  const feetEnvRight = Math.min(1, Math.max(0, (feetEndT - t) / 0.03));
+  // 足のsin波（顔・お尻領域ではフェードアウト）
+  const feetStartT = 0.12;
+  const feetEndT = 0.88;
+  const feetEnvLeft = Math.min(1, Math.max(0, (t - feetStartT) / 0.04));
+  const feetEnvRight = Math.min(1, Math.max(0, (feetEndT - t) / 0.04));
   const feetEnv = feetEnvLeft * feetEnvRight;
   const wave = params.feetAmp * Math.sin(params.feetFreq * Math.PI * 2 * t + params.feetPhase);
 
@@ -424,14 +425,23 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   }
   ctx.stroke();
 
-  // 下の線
+  // 下の線（noseX → buttXまで）
   ctx.beginPath();
-  for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(CAT.tailX * W); px++) {
+  for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(CAT.buttX * W); px++) {
     const xr = px / W;
     const y = getBottomY(xr, params, W, H);
     if (px === Math.floor(CAT.noseX * W)) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
+  ctx.stroke();
+
+  // お尻の垂直線（下の線の終点から上の線へ接続）
+  const buttPx = Math.round(CAT.buttX * W);
+  const buttBottom = getBottomY(CAT.buttX, params, W, H);
+  const buttTop = getTopY(CAT.buttX, params, W, H);
+  ctx.beginPath();
+  ctx.moveTo(buttPx, buttBottom);
+  ctx.lineTo(buttPx, buttTop);
   ctx.stroke();
 
   // 目（顔の中に2つの縦長楕円）
