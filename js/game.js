@@ -162,19 +162,27 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
+  const SJ = CFG.strokeJunctions;
+
   // ストローク1: 顔
   // 上の線（耳なし）: earZoneStartX → noseX（右から左）、続けて下の線: noseX → faceBottomEndX
   ctx.strokeStyle = SC.face;
   ctx.beginPath();
   for (let px = Math.ceil(SB.earZoneStartX * W); px >= Math.floor(CAT.noseX * W); px--) {
     const xr = px / W;
-    const y = getTopYNoEars(xr, params, W, H);
+    let y;
+    if (px === Math.ceil(SB.earZoneStartX * W))  y = SJ.earZoneStart_topY * H;
+    else if (px === Math.floor(CAT.noseX * W))    y = SJ.noseY * H;
+    else                                           y = getTopYNoEars(xr, params, W, H);
     if (px === Math.ceil(SB.earZoneStartX * W)) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
   for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(SB.faceBottomEndX * W); px++) {
     const xr = px / W;
-    const y = getBottomY(xr, params, W, H);
+    let y;
+    if (px === Math.floor(CAT.noseX * W))              y = SJ.noseY * H;
+    else if (px === Math.ceil(SB.faceBottomEndX * W))  y = SJ.faceBottomEnd_bottomY * H;
+    else                                                y = getBottomY(xr, params, W, H);
     ctx.lineTo(px, y);
   }
   ctx.stroke();
@@ -184,7 +192,10 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   ctx.beginPath();
   for (let px = Math.floor(SB.earZoneStartX * W); px <= Math.ceil(SB.earZoneEndX * W); px++) {
     const xr = px / W;
-    const y = getTopY(xr, params, W, H);
+    let y;
+    if (px === Math.floor(SB.earZoneStartX * W))  y = SJ.earZoneStart_topY * H;
+    else if (px === Math.ceil(SB.earZoneEndX * W)) y = SJ.earZoneEnd_topY * H;
+    else                                            y = getTopY(xr, params, W, H);
     if (px === Math.floor(SB.earZoneStartX * W)) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
@@ -195,7 +206,10 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   ctx.beginPath();
   for (let px = Math.floor(SB.earZoneEndX * W); px <= Math.ceil(SB.tailTopStartX * W); px++) {
     const xr = px / W;
-    const y = getTopY(xr, params, W, H);
+    let y;
+    if (px === Math.floor(SB.earZoneEndX * W))         y = SJ.earZoneEnd_topY * H;
+    else if (px === Math.ceil(SB.tailTopStartX * W))   y = SJ.tailTopStart_topY * H;
+    else                                                y = getTopY(xr, params, W, H);
     if (px === Math.floor(SB.earZoneEndX * W)) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
@@ -204,27 +218,22 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   // ストローク4: しっぽ（上の線 → 先端 → 下の線）
   ctx.strokeStyle = SC.tail;
   ctx.beginPath();
-  for (let px = Math.floor(SB.tailTopStartX * W); px <= Math.ceil(CAT.tailX * W); px++) {
+  for (let px = Math.floor(SB.tailTopStartX * W); px <= Math.ceil(SB.tailEndX * W); px++) {
     const xr = px / W;
-    const y = getTopY(xr, params, W, H);
+    let y;
+    if (px === Math.floor(SB.tailTopStartX * W))  y = SJ.tailTopStart_topY * H;
+    else if (px === Math.ceil(SB.tailEndX * W))    y = SJ.tailTipY * H;
+    else                                            y = getTopY(xr, params, W, H);
     if (px === Math.floor(SB.tailTopStartX * W)) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
-  for (let px = Math.ceil(CAT.tailX * W); px >= Math.floor(CAT.buttX * W); px--) {
+  for (let px = Math.ceil(SB.tailEndX * W); px >= Math.floor(SB.feetEndX * W); px--) {
     const xr = px / W;
-    const y = getBottomY(xr, params, W, H);
+    let y;
+    if (px === Math.ceil(SB.tailEndX * W))        y = SJ.tailTipY * H;
+    else if (px === Math.floor(SB.feetEndX * W))  y = SJ.feetEnd_bottomY * H;
+    else                                           y = getBottomY(xr, params, W, H);
     ctx.lineTo(px, y);
-  }
-  ctx.stroke();
-
-  // ストローク5: 尻
-  ctx.strokeStyle = SC.butt;
-  ctx.beginPath();
-  for (let px = Math.floor(SB.feetEndX * W); px <= Math.ceil(CAT.buttX * W); px++) {
-    const xr = px / W;
-    const y = getBottomY(xr, params, W, H);
-    if (px === Math.floor(SB.feetEndX * W)) ctx.moveTo(px, y);
-    else ctx.lineTo(px, y);
   }
   ctx.stroke();
 
@@ -233,7 +242,10 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   ctx.beginPath();
   for (let px = Math.floor(SB.feetStartX * W); px <= Math.ceil(SB.feetEndX * W); px++) {
     const xr = px / W;
-    const y = getBottomY(xr, params, W, H);
+    let y;
+    if (px === Math.floor(SB.feetStartX * W))     y = SJ.feetStart_bottomY * H;
+    else if (px === Math.ceil(SB.feetEndX * W))   y = SJ.feetEnd_bottomY * H;
+    else                                            y = getBottomY(xr, params, W, H);
     if (px === Math.floor(SB.feetStartX * W)) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
@@ -244,7 +256,10 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   ctx.beginPath();
   for (let px = Math.floor(SB.faceBottomEndX * W); px <= Math.ceil(SB.feetStartX * W); px++) {
     const xr = px / W;
-    const y = getBottomY(xr, params, W, H);
+    let y;
+    if (px === Math.floor(SB.faceBottomEndX * W)) y = SJ.faceBottomEnd_bottomY * H;
+    else if (px === Math.ceil(SB.feetStartX * W)) y = SJ.feetStart_bottomY * H;
+    else                                            y = getBottomY(xr, params, W, H);
     if (px === Math.floor(SB.faceBottomEndX * W)) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
@@ -476,6 +491,37 @@ function renderGame() {
   drawGrid(ctx, canvas.width, canvas.height);
   drawTargetImage(ctx, CFG.drawing.targetAlphaGame);
   drawCat(ctx, player, CFG.drawing.playerColor, CFG.drawing.playerLineWidth, 1.0);
+  drawJunctionPoints(ctx, canvas.width, canvas.height);
+}
+
+function drawJunctionPoints(ctx, W, H) {
+  const SB = CFG.strokeBounds;
+  const SJ = CFG.strokeJunctions;
+  const CAT = CFG.cat;
+  const R = 4;
+  const points = [
+    { x: SB.earZoneStartX,   y: SJ.earZoneStart_topY,      label: 'earZoneStart_top' },
+    { x: SB.earZoneEndX,     y: SJ.earZoneEnd_topY,         label: 'earZoneEnd_top' },
+    { x: SB.tailTopStartX,   y: SJ.tailTopStart_topY,       label: 'tailTopStart_top' },
+    { x: SB.tailEndX,        y: SJ.tailTipY,            label: 'tailTip' },
+    { x: CAT.noseX,          y: SJ.noseY,               label: 'nose' },
+    { x: SB.faceBottomEndX,  y: SJ.faceBottomEnd_bottomY,   label: 'faceBottomEnd_bottom' },
+    { x: SB.feetStartX,      y: SJ.feetStart_bottomY,       label: 'feetStart_bottom' },
+    { x: SB.feetEndX,        y: SJ.feetEnd_bottomY,         label: 'feetEnd_bottom' },
+  ];
+  ctx.save();
+  ctx.font = '10px monospace';
+  for (const p of points) {
+    const px = p.x * W;
+    const py = p.y * H;
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.85)';
+    ctx.beginPath();
+    ctx.arc(px, py, R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.85)';
+    ctx.fillText(p.label, px + R + 2, py + 4);
+  }
+  ctx.restore();
 }
 
 function renderTitle() {
@@ -620,8 +666,10 @@ async function init() {
   setupSliderEvents();
   extractContours();
   buildBaselineLUT();
-  showScreen('title');
-  renderTitle();
+  // TODO: 開発中は直接ゲーム画面へ（あとで戻す）
+  // showScreen('title');
+  // renderTitle();
+  startGame();
 }
 
 // デバッグ用: answerParamsのフィッティング
