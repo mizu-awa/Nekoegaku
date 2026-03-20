@@ -164,26 +164,20 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
 
   const SJ = CFG.strokeJunctions;
 
-  // ストローク1: 顔
-  // 上の線（耳なし）: earZoneStartX → noseX（右から左）、続けて下の線: noseX → faceBottomEndX
+  // ストローク1: 顔（earZoneStartX → faceBottomEndX を3次ベジェ曲線1本で描画）
   ctx.strokeStyle = SC.face;
   ctx.beginPath();
-  for (let px = Math.ceil(SB.earZoneStartX * W); px >= Math.floor(CAT.noseX * W); px--) {
-    const xr = px / W;
-    let y;
-    if (px === Math.ceil(SB.earZoneStartX * W))  y = SJ.earZoneStart_topY * H;
-    else if (px === Math.floor(CAT.noseX * W))    y = SJ.noseY * H;
-    else                                           y = getTopYNoEars(xr, params, W, H);
-    if (px === Math.ceil(SB.earZoneStartX * W)) ctx.moveTo(px, y);
-    else ctx.lineTo(px, y);
-  }
-  for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(SB.faceBottomEndX * W); px++) {
-    const xr = px / W;
-    let y;
-    if (px === Math.floor(CAT.noseX * W))              y = SJ.noseY * H;
-    else if (px === Math.ceil(SB.faceBottomEndX * W))  y = SJ.faceBottomEnd_bottomY * H;
-    else                                                y = getBottomY(xr, params, W, H);
-    ctx.lineTo(px, y);
+  {
+    const x0 = SB.earZoneStartX * W;
+    const y0 = SJ.earZoneStart_topY * H;
+    const x3 = SB.faceBottomEndX * W;
+    const y3 = SJ.faceBottomEnd_bottomY * H;
+    const cp1x = x0 - 52;
+    const cp1y = y0 + 40;
+    const cp2x = x3 - 110;
+    const cp2y = y3 - 10;
+    ctx.moveTo(x0, y0);
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x3, y3);
   }
   ctx.stroke();
 
@@ -204,14 +198,15 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   // ストローク3: 背中
   ctx.strokeStyle = SC.back;
   ctx.beginPath();
-  for (let px = Math.floor(SB.earZoneEndX * W); px <= Math.ceil(SB.tailTopStartX * W); px++) {
-    const xr = px / W;
-    let y;
-    if (px === Math.floor(SB.earZoneEndX * W))         y = SJ.earZoneEnd_topY * H;
-    else if (px === Math.ceil(SB.tailTopStartX * W))   y = SJ.tailTopStart_topY * H;
-    else                                                y = getTopY(xr, params, W, H);
-    if (px === Math.floor(SB.earZoneEndX * W)) ctx.moveTo(px, y);
-    else ctx.lineTo(px, y);
+  {
+    const x0 = SB.earZoneEndX * W;
+    const y0 = SJ.earZoneEnd_topY * H;
+    const x1 = SB.tailTopStartX * W;
+    const y1 = SJ.tailTopStart_topY * H;
+    const cpx = (x0 + x1) / 2;
+    const cpy = Math.min(y0, y1) - 5;
+    ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(cpx, cpy, x1, y1);
   }
   ctx.stroke();
 
@@ -227,13 +222,21 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
     if (px === Math.floor(SB.tailTopStartX * W)) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
-  for (let px = Math.ceil(SB.tailEndX * W); px >= Math.floor(SB.feetEndX * W); px--) {
-    const xr = px / W;
-    let y;
-    if (px === Math.ceil(SB.tailEndX * W))        y = SJ.tailTipY * H;
-    else if (px === Math.floor(SB.feetEndX * W))  y = SJ.feetEnd_bottomY * H;
-    else                                           y = getBottomY(xr, params, W, H);
-    ctx.lineTo(px, y);
+  ctx.stroke();
+
+  // ストローク5: お尻
+  ctx.strokeStyle = SC.butt;
+  ctx.beginPath();
+  {
+    // 下の線: tailEnd → feetEnd
+    const x0 = SB.tailEndX * W;
+    const y0 = SJ.tailTipY * H;
+    const x1 = SB.feetEndX * W;
+    const y1 = SJ.feetEnd_bottomY * H;
+    const cpx = (x0 + x1) / 2 - 5;
+    const cpy = Math.min(y0, y1) + 10;
+    ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(cpx, cpy, x1, y1);
   }
   ctx.stroke();
 
@@ -254,14 +257,15 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   // ストローク7: 足と顔をつなぐライン
   ctx.strokeStyle = SC.connector;
   ctx.beginPath();
-  for (let px = Math.floor(SB.faceBottomEndX * W); px <= Math.ceil(SB.feetStartX * W); px++) {
-    const xr = px / W;
-    let y;
-    if (px === Math.floor(SB.faceBottomEndX * W)) y = SJ.faceBottomEnd_bottomY * H;
-    else if (px === Math.ceil(SB.feetStartX * W)) y = SJ.feetStart_bottomY * H;
-    else                                            y = getBottomY(xr, params, W, H);
-    if (px === Math.floor(SB.faceBottomEndX * W)) ctx.moveTo(px, y);
-    else ctx.lineTo(px, y);
+  {
+    const x0 = SB.faceBottomEndX * W;
+    const y0 = SJ.faceBottomEnd_bottomY * H;
+    const x1 = SB.feetStartX * W;
+    const y1 = SJ.feetStart_bottomY * H;
+    const cpx = (x0 + x1) / 2;
+    const cpy = Math.max(y0, y1) - 10;
+    ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(cpx, cpy, x1, y1);
   }
   ctx.stroke();
 
