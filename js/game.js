@@ -591,28 +591,42 @@ function calculateScore() {
   const W = CFG.canvas.width;
   const H = CFG.canvas.height;
   const CAT = CFG.cat;
+  const SB = CFG.strokeBounds;
   const SC = CFG.scoring;
+  const startPx = Math.floor(CAT.noseX * W);
   let totalError = 0;
   let count = 0;
 
-  const startPx = Math.floor(CAT.noseX * W);
-  const endPx = Math.ceil(CAT.tailX * W);
+  // スライダー影響がある3ストロークの範囲（端点を除いた中間ピクセルのみ）
+  const scoredStrokes = [
+    // 耳（上の線）: earZoneStartX ～ earZoneEndX
+    { startX: SB.earZoneStartX, endX: SB.earZoneEndX, getY: (xr) => getTopY(xr, player, W, H), ref: refTopY },
+    // しっぽ（上の線）: tailTopStartX ～ tailEndX
+    { startX: SB.tailTopStartX, endX: SB.tailEndX, getY: (xr) => getTopY(xr, player, W, H), ref: refTopY },
+    // 足（下の線）: feetStartX ～ feetEndX
+    { startX: SB.feetStartX, endX: SB.feetEndX, getY: (xr) => getBottomY(xr, player, W, H), ref: refBottomY },
+  ];
 
-  let idx = 0;
-  for (let px = startPx; px <= endPx; px += SC.sampleStep) {
-    const xr = px / W;
-    const pTop = getTopY(xr, player, W, H);
-    const pBot = getBottomY(xr, player, W, H);
+  for (const stroke of scoredStrokes) {
+    const sPx = Math.floor(stroke.startX * W);
+    const ePx = Math.ceil(stroke.endX * W);
 
-    const tTop = refTopY[idx];
-    const tBot = refBottomY[idx];
-    idx++;
+    for (let px = sPx; px <= ePx; px += SC.sampleStep) {
+      // 端点はスキップ（描画で固定値を使っているため）
+      if (px <= sPx || px >= ePx) continue;
 
-    totalError += (tTop - pTop) ** 2;
-    totalError += (tBot - pBot) ** 2;
-    count += 2;
+      const xr = px / W;
+      const playerY = stroke.getY(xr);
+      const refIdx = Math.round((px - startPx) / SC.sampleStep);
+      if (refIdx < 0 || refIdx >= stroke.ref.length) continue;
+      const refY = stroke.ref[refIdx];
+
+      totalError += (refY - playerY) ** 2;
+      count++;
+    }
   }
 
+  if (count === 0) return 0;
   const rmse = Math.sqrt(totalError / count);
   const score = Math.max(0, Math.round(SC.maxScore * Math.max(0, 1 - rmse / SC.maxRmse)));
   return score;
@@ -685,9 +699,6 @@ function backToTitle() {
 async function init() {
   await Promise.all([loadConfig(), loadLang(), loadImages()]);
   imagesLoaded = true;
-
-  // 初期パラメータ設定
-  Object.assign(player, CFG.playerInitial);
 
   applyLabels();
   applySliderRanges();
@@ -782,7 +793,7 @@ window.autoFit = function () {
       } else if (t > buttT) {
         const tailProgress = (t - buttT) / (1 - buttT);
         const smooth2 = tailProgress * tailProgress * (3 - 2 * tailProgress);
-        const tailTipY = backY_val - getTailContribution(CAT.tailX, trial, W, H);
+        const tailTipY = backY_val - getTailContribution(CAT.tailX, params, W, H);
         baseY = backY_val + (tailTipY - backY_val) * smooth2;
       }
       const mathBot = baseY + feet;

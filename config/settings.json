@@ -38,15 +38,6 @@
     "feetFreq": 2.5,
     "feetPhase": 0.8
   },
-  "playerInitial": {
-    "earHeight": 50,
-    "earGap": 30,
-    "earWidth": 40,
-    "tailHeight": 30,
-    "feetAmp": 20,
-    "feetFreq": 5.0,
-    "feetPhase": 0.8
-  },
   "drawing": {
     "playerColor": "#2c2c2c",
     "playerLineWidth": 5,
