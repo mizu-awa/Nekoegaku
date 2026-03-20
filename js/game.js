@@ -117,30 +117,15 @@ function getBottomY(xRatio, params, W, H) {
     return baseline + feet;
   }
 
-  // フォールバック: 数式ベースライン
+  // フォールバック: LUT未構築時は平坦なベースライン
   const noseY = CAT.noseY * H;
-  const backY = CAT.backY * H;
   const bottomBaseY = CAT.bottomY * H;
-
-  const buttT = (CAT.buttX - CAT.noseX) / (CAT.tailX - CAT.noseX);
 
   let baseY;
   if (t < BL.faceEndT) {
     baseY = noseY + (bottomBaseY - noseY) * (t / BL.faceEndT);
   } else {
     baseY = bottomBaseY;
-  }
-
-  if (t > BL.buttRiseStart && t <= buttT) {
-    const bt = (t - BL.buttRiseStart) / (buttT - BL.buttRiseStart);
-    const smooth = bt * bt * (3 - 2 * bt);
-    baseY = bottomBaseY + (backY - bottomBaseY) * smooth;
-  } else if (t > buttT) {
-    // しっぽ領域: お尻（backY）からしっぽ先端に向かって上昇
-    const tailProgress = (t - buttT) / (1 - buttT);
-    const smooth = tailProgress * tailProgress * (3 - 2 * tailProgress);
-    const tailTipY = backY - getTailContribution(CAT.tailX, params, W, H);
-    baseY = backY + (tailTipY - backY) * smooth;
   }
 
   const feet = getFeetContribution(xRatio, params, W, H);
@@ -394,19 +379,27 @@ function smoothContour(arr, radius) {
 // ============================================================
 function getEarContribution(xRatio, params, W) {
   const CAT = CFG.cat;
+  const SB = CFG.strokeBounds;
   const ear1X = (CAT.earCenterX - params.earGap / W) * W;
   const ear2X = (CAT.earCenterX + params.earGap / W) * W;
   const x = xRatio * W;
   const ear1 = params.earHeight * Math.exp(-((x - ear1X) ** 2) / (2 * params.earWidth ** 2));
   const ear2 = params.earHeight * Math.exp(-((x - ear2X) ** 2) / (2 * params.earWidth ** 2));
-  return ear1 + ear2;
+  const span = CAT.tailX - CAT.noseX;
+  const t = (xRatio - CAT.noseX) / span;
+  const earStartT = (SB.earZoneStartX - CAT.noseX) / span;
+  const earEndT = (SB.earZoneEndX - CAT.noseX) / span;
+  const fadeWidth = CFG.bottomLine.fadeWidth;
+  const envLeft = Math.min(1, Math.max(0, (t - earStartT) / fadeWidth));
+  const envRight = Math.min(1, Math.max(0, (earEndT - t) / fadeWidth));
+  return (ear1 + ear2) * envLeft * envRight;
 }
 
 function getTailContribution(xRatio, params, W, H) {
   const CAT = CFG.cat;
   const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX);
   if (t < 0 || t > 1) return 0;
-  const tailStart = CFG.topLine.tailStart;
+  const tailStart = (CFG.strokeBounds.tailTopStartX - CAT.noseX) / (CAT.tailX - CAT.noseX);
   const tailT = Math.max(0, (t - tailStart) / (1 - tailStart));
   const smoothTail = tailT * tailT * (3 - 2 * tailT);
   return params.tailHeight * smoothTail;
@@ -424,10 +417,14 @@ function getSingleEarContribution(xRatio, earCenterPx, params, W) {
 function getFeetContribution(xRatio, params, W, H) {
   const CAT = CFG.cat;
   const BL = CFG.bottomLine;
-  const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX);
+  const SB = CFG.strokeBounds;
+  const span = CAT.tailX - CAT.noseX;
+  const t = (xRatio - CAT.noseX) / span;
   if (t < 0 || t > 1) return 0;
-  const feetEnvLeft = Math.min(1, Math.max(0, (t - BL.feetStartT) / BL.feetFadeWidth));
-  const feetEnvRight = Math.min(1, Math.max(0, (BL.feetEndT - t) / BL.feetFadeWidth));
+  const feetStartT = (SB.feetStartX - CAT.noseX) / span;
+  const feetEndT = (SB.feetEndX - CAT.noseX) / span;
+  const feetEnvLeft = Math.min(1, Math.max(0, (t - feetStartT) / BL.fadeWidth));
+  const feetEnvRight = Math.min(1, Math.max(0, (feetEndT - t) / BL.fadeWidth));
   const feetEnv = feetEnvLeft * feetEnvRight;
   const wave = params.feetAmp * Math.sin(params.feetFreq * Math.PI * 2 * t + params.feetPhase);
   return feetEnv * wave;
@@ -449,6 +446,10 @@ function buildBaselineLUT() {
   refTopBaseline = new Float64Array(sampleCount);
   refBottomBaseline = new Float64Array(sampleCount);
 
+  const SB = CFG.strokeBounds;
+  const SJ = CFG.strokeJunctions;
+  const BL = CFG.bottomLine;
+
   let idx = 0;
   for (let px = startPx; px <= endPx; px += SC.sampleStep) {
     const xr = px / W;
@@ -457,8 +458,23 @@ function buildBaselineLUT() {
       + getEarContribution(xr, answer, W)
       + getTailContribution(xr, answer, W, H);
     // 下線: baseline = refBottomY - feet (可変部分を引き戻す)
-    refBottomBaseline[idx] = refBottomY[idx]
+    let bottomBase = refBottomY[idx]
       - getFeetContribution(xr, answer, W, H);
+    // 足の範囲端付近: ベースラインを端点Y値にsmoothstepブレンド
+    const bw = BL.baselineBlendWidth;
+    const distToEnd = SB.feetEndX - xr;
+    if (distToEnd >= 0 && distToEnd < bw) {
+      const bt = 1 - distToEnd / bw;
+      const smooth = bt * bt * (3 - 2 * bt);
+      bottomBase = bottomBase * (1 - smooth) + (SJ.feetEnd_bottomY * H) * smooth;
+    }
+    const distToStart = xr - SB.feetStartX;
+    if (distToStart >= 0 && distToStart < bw) {
+      const bt = 1 - distToStart / bw;
+      const smooth = bt * bt * (3 - 2 * bt);
+      bottomBase = bottomBase * (1 - smooth) + (SJ.feetStart_bottomY * H) * smooth;
+    }
+    refBottomBaseline[idx] = bottomBase;
     idx++;
   }
 }
@@ -777,26 +793,9 @@ window.autoFit = function () {
       // refTopY = 画像の正解 → paramsでの曲線がこれに近いほど良い
       err += (refTopY[idx] - mathTop) ** 2;
 
-      // 下線
-      const BL = CFG.bottomLine;
-      const buttT = (CAT.buttX - CAT.noseX) / (CAT.tailX - CAT.noseX);
-      let baseY;
-      if (t < BL.faceEndT) {
-        baseY = noseY_val + (CAT.bottomY * H - noseY_val) * (t / BL.faceEndT);
-      } else {
-        baseY = CAT.bottomY * H;
-      }
-      if (t > BL.buttRiseStart && t <= buttT) {
-        const bt = (t - BL.buttRiseStart) / (buttT - BL.buttRiseStart);
-        const smooth = bt * bt * (3 - 2 * bt);
-        baseY = CAT.bottomY * H + (backY_val - CAT.bottomY * H) * smooth;
-      } else if (t > buttT) {
-        const tailProgress = (t - buttT) / (1 - buttT);
-        const smooth2 = tailProgress * tailProgress * (3 - 2 * tailProgress);
-        const tailTipY = backY_val - getTailContribution(CAT.tailX, params, W, H);
-        baseY = backY_val + (tailTipY - backY_val) * smooth2;
-      }
-      const mathBot = baseY + feet;
+      // 下線: LUTベースラインを使用
+      const botBaseline = interpolateBaseline(refBottomBaseline, xr);
+      const mathBot = (botBaseline !== null ? botBaseline : CAT.bottomY * H) + feet;
       err += (refBottomY[idx] - mathBot) ** 2;
 
       count += 2;

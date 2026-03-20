@@ -11,7 +11,6 @@
   "cat": {
     "noseX": 0.031,
     "tailX": 0.96,
-    "buttX": 0.89,
     "noseY": 0.49,
     "backY": 0.25,
     "bottomY": 0.65,
@@ -67,15 +66,12 @@
     "feetPhase":  { "min": -3.14, "max": 3.14, "step": 0.05 }
   },
   "topLine": {
-    "faceDecayRate": 12,
-    "tailStart": 0.85
+    "faceDecayRate": 12
   },
   "bottomLine": {
     "faceEndT": 0.10,
-    "buttRiseStart": 0.90,
-    "feetStartT": 0.12,
-    "feetEndT": 0.88,
-    "feetFadeWidth": 0.04
+    "fadeWidth": 0.04,
+    "baselineBlendWidth": 0.12
   },
   "strokeBounds": {
     "earZoneStartX": 0.07,
