@@ -152,31 +152,100 @@ function getBottomY(xRatio, params, W, H) {
 // ============================================================
 function drawCat(ctx, params, color, lineWidth, alpha) {
   const CAT = CFG.cat;
+  const SB = CFG.strokeBounds;
+  const SC = CFG.strokeColors;
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.strokeStyle = color;
   ctx.lineWidth = lineWidth;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  // 上の線
+  // ストローク1: 顔
+  // 上の線（耳なし）: earZoneStartX → noseX（右から左）、続けて下の線: noseX → faceBottomEndX
+  ctx.strokeStyle = SC.face;
   ctx.beginPath();
-  for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(CAT.tailX * W); px++) {
+  for (let px = Math.ceil(SB.earZoneStartX * W); px >= Math.floor(CAT.noseX * W); px--) {
+    const xr = px / W;
+    const y = getTopYNoEars(xr, params, W, H);
+    if (px === Math.ceil(SB.earZoneStartX * W)) ctx.moveTo(px, y);
+    else ctx.lineTo(px, y);
+  }
+  for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(SB.faceBottomEndX * W); px++) {
+    const xr = px / W;
+    const y = getBottomY(xr, params, W, H);
+    ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+
+  // ストローク2: 耳（earZoneStartX～earZoneEndX の上の線を1ストロークで描画）
+  ctx.strokeStyle = SC.ears;
+  ctx.beginPath();
+  for (let px = Math.floor(SB.earZoneStartX * W); px <= Math.ceil(SB.earZoneEndX * W); px++) {
     const xr = px / W;
     const y = getTopY(xr, params, W, H);
-    if (px === Math.floor(CAT.noseX * W)) ctx.moveTo(px, y);
+    if (px === Math.floor(SB.earZoneStartX * W)) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
   ctx.stroke();
 
-  // 下の線（しっぽの先端まで）
+  // ストローク3: 背中
+  ctx.strokeStyle = SC.back;
   ctx.beginPath();
-  for (let px = Math.floor(CAT.noseX * W); px <= Math.ceil(CAT.tailX * W); px++) {
+  for (let px = Math.floor(SB.earZoneEndX * W); px <= Math.ceil(SB.tailTopStartX * W); px++) {
+    const xr = px / W;
+    const y = getTopY(xr, params, W, H);
+    if (px === Math.floor(SB.earZoneEndX * W)) ctx.moveTo(px, y);
+    else ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+
+  // ストローク4: しっぽ（上の線 → 先端 → 下の線）
+  ctx.strokeStyle = SC.tail;
+  ctx.beginPath();
+  for (let px = Math.floor(SB.tailTopStartX * W); px <= Math.ceil(CAT.tailX * W); px++) {
+    const xr = px / W;
+    const y = getTopY(xr, params, W, H);
+    if (px === Math.floor(SB.tailTopStartX * W)) ctx.moveTo(px, y);
+    else ctx.lineTo(px, y);
+  }
+  for (let px = Math.ceil(CAT.tailX * W); px >= Math.floor(CAT.buttX * W); px--) {
     const xr = px / W;
     const y = getBottomY(xr, params, W, H);
-    if (px === Math.floor(CAT.noseX * W)) ctx.moveTo(px, y);
+    ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+
+  // ストローク5: 尻
+  ctx.strokeStyle = SC.butt;
+  ctx.beginPath();
+  for (let px = Math.floor(SB.feetEndX * W); px <= Math.ceil(CAT.buttX * W); px++) {
+    const xr = px / W;
+    const y = getBottomY(xr, params, W, H);
+    if (px === Math.floor(SB.feetEndX * W)) ctx.moveTo(px, y);
+    else ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+
+  // ストローク6: 足
+  ctx.strokeStyle = SC.feet;
+  ctx.beginPath();
+  for (let px = Math.floor(SB.feetStartX * W); px <= Math.ceil(SB.feetEndX * W); px++) {
+    const xr = px / W;
+    const y = getBottomY(xr, params, W, H);
+    if (px === Math.floor(SB.feetStartX * W)) ctx.moveTo(px, y);
+    else ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+
+  // ストローク7: 足と顔をつなぐライン
+  ctx.strokeStyle = SC.connector;
+  ctx.beginPath();
+  for (let px = Math.floor(SB.faceBottomEndX * W); px <= Math.ceil(SB.feetStartX * W); px++) {
+    const xr = px / W;
+    const y = getBottomY(xr, params, W, H);
+    if (px === Math.floor(SB.faceBottomEndX * W)) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
   ctx.stroke();
@@ -298,6 +367,15 @@ function getTailContribution(xRatio, params, W, H) {
   const tailT = Math.max(0, (t - tailStart) / (1 - tailStart));
   const smoothTail = tailT * tailT * (3 - 2 * tailT);
   return params.tailHeight * smoothTail;
+}
+
+function getTopYNoEars(xRatio, params, W, H) {
+  return getTopY(xRatio, params, W, H) + getEarContribution(xRatio, params, W);
+}
+
+function getSingleEarContribution(xRatio, earCenterPx, params, W) {
+  const x = xRatio * W;
+  return params.earHeight * Math.exp(-((x - earCenterPx) ** 2) / (2 * params.earWidth ** 2));
 }
 
 function getFeetContribution(xRatio, params, W, H) {
