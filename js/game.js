@@ -323,22 +323,46 @@ function extractContours() {
 
   let idx = 0;
   for (let px = startPx; px <= endPx; px += SC.sampleStep) {
-    let topFound = -1;
-    let bottomFound = -1;
+    let topOuter = -1;
+    let topInner = -1;
+    let bottomOuter = -1;
+    let bottomInner = -1;
 
+    // 上の線：外端（上端）を見つけてから、線の内端（下端）を探す
     for (let y = 0; y < H; y++) {
       if (pixels[(y * W + px) * 4 + 3] > SC.alphaThreshold) {
-        topFound = y;
+        topOuter = y;
+        // 線の内端（最初の透明ピクセル）を探す
+        for (let y2 = y + 1; y2 < H; y2++) {
+          if (pixels[(y2 * W + px) * 4 + 3] <= SC.alphaThreshold) {
+            topInner = y2 - 1;
+            break;
+          }
+        }
+        if (topInner === -1) topInner = topOuter;
         break;
       }
     }
 
+    // 下の線：外端（下端）を見つけてから、線の内端（上端）を探す
     for (let y = H - 1; y >= 0; y--) {
       if (pixels[(y * W + px) * 4 + 3] > SC.alphaThreshold) {
-        bottomFound = y;
+        bottomOuter = y;
+        // 線の内端（最初の透明ピクセル）を探す
+        for (let y2 = y - 1; y2 >= 0; y2--) {
+          if (pixels[(y2 * W + px) * 4 + 3] <= SC.alphaThreshold) {
+            bottomInner = y2 + 1;
+            break;
+          }
+        }
+        if (bottomInner === -1) bottomInner = bottomOuter;
         break;
       }
     }
+
+    // 線の中央を基準にする
+    let topFound = topOuter !== -1 ? (topOuter + topInner) / 2 : -1;
+    let bottomFound = bottomOuter !== -1 ? (bottomOuter + bottomInner) / 2 : -1;
 
     if (topFound === -1) topFound = idx > 0 ? refTopY[idx - 1] : CAT.backY * H;
     if (bottomFound === -1) bottomFound = idx > 0 ? refBottomY[idx - 1] : CAT.bottomY * H;
