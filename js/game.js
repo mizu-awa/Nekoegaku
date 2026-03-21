@@ -217,7 +217,7 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
     const x0 = SB.tailEndX * W;
     const y0 = SJ.tailTipY * H;
     const x1 = SB.feetEndX * W;
-    const y1 = SJ.feetEnd_bottomY * H;
+    const y1 = getBottomY(SB.feetEndX, params, W, H);
     const cpx = (x0 + x1) / 2 - 5;
     const cpy = Math.min(y0, y1) + 10;
     ctx.moveTo(x0, y0);
@@ -231,9 +231,7 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   for (let px = Math.floor(SB.feetStartX * W); px <= Math.ceil(SB.feetEndX * W); px++) {
     const xr = px / W;
     let y;
-    if (px === Math.floor(SB.feetStartX * W))     y = SJ.feetStart_bottomY * H;
-    else if (px === Math.ceil(SB.feetEndX * W))   y = SJ.feetEnd_bottomY * H;
-    else                                            y = getBottomY(xr, params, W, H);
+    y = getBottomY(xr, params, W, H);
     if (px === Math.floor(SB.feetStartX * W)) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
@@ -246,7 +244,7 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
     const x0 = SB.faceBottomEndX * W;
     const y0 = SJ.faceBottomEnd_bottomY * H;
     const x1 = SB.feetStartX * W;
-    const y1 = SJ.feetStart_bottomY * H;
+    const y1 = getBottomY(SB.feetStartX, params, W, H);
     const cpx = (x0 + x1) / 2;
     const cpy = Math.max(y0, y1) - 10;
     ctx.moveTo(x0, y0);
@@ -293,6 +291,7 @@ function extractContours() {
   const H = CFG.canvas.height;
   const CAT = CFG.cat;
   const SC = CFG.scoring;
+  const SB = CFG.strokeBounds;
 
   const offscreen = document.createElement('canvas');
   offscreen.width = W;
@@ -338,7 +337,12 @@ function extractContours() {
       if (pixels[(y * W + px) * 4 + 3] > SC.alphaThreshold) {
         bottomOuter = y;
         // 線の内端（最初の透明ピクセル）を探す
-        for (let y2 = y - 1; y2 >= 0; y2--) {
+        const xr_bottom = px / W;
+        const nearFeetEnd = xr_bottom >= SB.feetEndX - 0.02;
+        const nearFeetStart = xr_bottom <= SB.feetStartX + 0.00;
+        const maxLineSearch = (nearFeetEnd || nearFeetStart)
+          ? CFG.drawing.playerLineWidth * 3 : H;
+        for (let y2 = y - 1; y2 >= Math.max(0, y - maxLineSearch); y2--) {
           if (pixels[(y2 * W + px) * 4 + 3] <= SC.alphaThreshold) {
             bottomInner = y2 + 1;
             break;
@@ -363,6 +367,19 @@ function extractContours() {
 
   smoothContour(refTopY, SC.smoothingRadius);
   smoothContour(refBottomY, SC.smoothingRadius);
+
+  // デバッグ: refBottomYの左端付近の値を出力
+  const feetStartPx = Math.floor(SB.feetStartX * W);
+  console.log('=== refBottomY 左端付近 (feetStartX=' + SB.feetStartX + ', px=' + feetStartPx + ') ===');
+  for (let px = feetStartPx - 10; px <= feetStartPx + 40; px += SC.sampleStep) {
+    const i = Math.floor((px - startPx) / SC.sampleStep);
+    if (i >= 0 && i < refBottomY.length) {
+      const actualPx = startPx + i * SC.sampleStep;
+      const xr = actualPx / W;
+      console.log('px=' + actualPx + ' xr=' + xr.toFixed(4) + ' refBottomY=' + refBottomY[i].toFixed(1));
+    }
+  }
+
 }
 
 function smoothContour(arr, radius) {
@@ -421,8 +438,8 @@ function getFeetContribution(xRatio, params, W, H) {
   const span = CAT.tailX - CAT.noseX;
   const t = (xRatio - CAT.noseX) / span;
   if (t < 0 || t > 1) return 0;
-  const feetStartT = (SB.feetStartX - CAT.noseX) / span;
-  const feetEndT = (SB.feetEndX - CAT.noseX) / span;
+  const feetStartT = (SB.feetStartX - CAT.noseX) / span - BL.fadeWidth;
+  const feetEndT = (SB.feetEndX - CAT.noseX) / span + BL.fadeWidth;
   const feetEnvLeft = Math.min(1, Math.max(0, (t - feetStartT) / BL.fadeWidth));
   const feetEnvRight = Math.min(1, Math.max(0, (feetEndT - t) / BL.fadeWidth));
   const feetEnv = feetEnvLeft * feetEnvRight;
@@ -448,7 +465,6 @@ function buildBaselineLUT() {
 
   const SB = CFG.strokeBounds;
   const SJ = CFG.strokeJunctions;
-  const BL = CFG.bottomLine;
 
   let idx = 0;
   for (let px = startPx; px <= endPx; px += SC.sampleStep) {
@@ -458,21 +474,13 @@ function buildBaselineLUT() {
       + getEarContribution(xr, answer, W)
       + getTailContribution(xr, answer, W, H);
     // 下線: baseline = refBottomY - feet (可変部分を引き戻す)
-    let bottomBase = refBottomY[idx]
-      - getFeetContribution(xr, answer, W, H);
-    // 足の範囲端付近: ベースラインを端点Y値にsmoothstepブレンド
-    const bw = BL.baselineBlendWidth;
-    const distToEnd = SB.feetEndX - xr;
-    if (distToEnd >= 0 && distToEnd < bw) {
-      const bt = 1 - distToEnd / bw;
-      const smooth = bt * bt * (3 - 2 * bt);
-      bottomBase = bottomBase * (1 - smooth) + (SJ.feetEnd_bottomY * H) * smooth;
-    }
-    const distToStart = xr - SB.feetStartX;
-    if (distToStart >= 0 && distToStart < bw) {
-      const bt = 1 - distToStart / bw;
-      const smooth = bt * bt * (3 - 2 * bt);
-      bottomBase = bottomBase * (1 - smooth) + (SJ.feetStart_bottomY * H) * smooth;
+    // 足の右端以降はrefBottomYがお尻/しっぽの線を拾うため、端点値で固定
+    let bottomBase;
+    if (xr >= SB.feetEndX) {
+      bottomBase = SJ.feetEnd_bottomY * H;
+    } else {
+      bottomBase = refBottomY[idx]
+        - getFeetContribution(xr, answer, W, H);
     }
     refBottomBaseline[idx] = bottomBase;
     idx++;
