@@ -50,10 +50,7 @@ const headImg = new Image();
 const tailImg = new Image();
 let imagesLoaded = false;
 
-let refTopY = null;
-let refBottomY = null;
-let refTopBaseline = null;
-let refBottomBaseline = null;
+let catPath = null;
 
 function loadImages() {
   return new Promise((resolve) => {
@@ -66,6 +63,42 @@ function loadImages() {
   });
 }
 
+// ============================================================
+// 静的パスの読み込みとスプライン補間
+// ============================================================
+async function loadCatPath() {
+  const res = await fetch('config/cat-path.json');
+  catPath = await res.json();
+}
+
+function getScaledTanY(points, i) {
+  const p = points[i];
+  if (p.tx !== undefined && p.ty !== undefined) return p.ty;
+  const prev = points[Math.max(0, i - 1)];
+  const next = points[Math.min(points.length - 1, i + 1)];
+  return (next.y - prev.y) / 2;
+}
+
+function splineY(points, xRatio) {
+  if (!points || points.length < 2) return null;
+  if (xRatio <= points[0].x) return points[0].y;
+  if (xRatio >= points[points.length - 1].x) return points[points.length - 1].y;
+  let seg = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    if (xRatio >= points[i].x && xRatio <= points[i + 1].x) { seg = i; break; }
+  }
+  const p0 = points[seg], p1 = points[seg + 1];
+  const segLen = p1.x - p0.x;
+  if (segLen === 0) return p0.y;
+  const t = (xRatio - p0.x) / segLen;
+  const tanY0 = getScaledTanY(points, seg);
+  const tanY1 = getScaledTanY(points, seg + 1);
+  const t2 = t * t, t3 = t2 * t;
+  return (2*t3 - 3*t2 + 1) * p0.y + (t3 - 2*t2 + t) * tanY0
+       + (-2*t3 + 3*t2) * p1.y + (t3 - t2) * tanY1;
+}
+
+
 // プレイヤーパラメータ
 const player = {};
 
@@ -77,59 +110,23 @@ function resetPlayer() {
 // 上の線のy座標を計算
 // ============================================================
 function getTopY(xRatio, params, W, H) {
-  const CAT = CFG.cat;
-  const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX);
-  if (t < 0 || t > 1) return CAT.noseY * H;
-
-  // LUTベースライン（元画像から抽出した固定パス）
-  const baseline = interpolateBaseline(refTopBaseline, xRatio);
-  if (baseline !== null) {
-    const ears = getEarContribution(xRatio, params, W);
-    const tail = getTailContribution(xRatio, params, W, H);
-    return baseline - ears - tail;
-  }
-
-  // フォールバック: 数式ベースライン
-  const backY = CAT.backY * H;
-  const noseY = CAT.noseY * H;
-  const faceT = Math.max(0, 1 - t * CFG.topLine.faceDecayRate);
-  const faceY = faceT * (noseY - backY);
-
-  const ears = getEarContribution(xRatio, params, W);
-  const tail = getTailContribution(xRatio, params, W, H);
-
-  return backY + faceY - ears - tail;
+  if (!catPath) return CFG.cat.noseY * H;
+  const answer = CFG.answerParams;
+  const base = splineY(catPath.topLine, xRatio) * H;
+  const deltaEars = getEarContribution(xRatio, params, W) - getEarContribution(xRatio, answer, W);
+  const deltaTail = getTailContribution(xRatio, params, W, H) - getTailContribution(xRatio, answer, W, H);
+  return base - deltaEars - deltaTail;
 }
 
 // ============================================================
 // 下の線のy座標を計算
 // ============================================================
 function getBottomY(xRatio, params, W, H) {
-  const CAT = CFG.cat;
-  const BL = CFG.bottomLine;
-  const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX);
-  if (t < 0 || t > 1) return CAT.noseY * H;
-
-  // LUTベースライン（元画像から抽出した固定パス）
-  const baseline = interpolateBaseline(refBottomBaseline, xRatio);
-  if (baseline !== null) {
-    const feet = getFeetContribution(xRatio, params, W, H);
-    return baseline + feet;
-  }
-
-  // フォールバック: LUT未構築時は平坦なベースライン
-  const noseY = CAT.noseY * H;
-  const bottomBaseY = CAT.bottomY * H;
-
-  let baseY;
-  if (t < BL.faceEndT) {
-    baseY = noseY + (bottomBaseY - noseY) * (t / BL.faceEndT);
-  } else {
-    baseY = bottomBaseY;
-  }
-
-  const feet = getFeetContribution(xRatio, params, W, H);
-  return baseY + feet;
+  if (!catPath) return CFG.cat.noseY * H;
+  const answer = CFG.answerParams;
+  const base = splineY(catPath.bottomLine, xRatio) * H;
+  const deltaFeet = getFeetContribution(xRatio, params, W, H) - getFeetContribution(xRatio, answer, W, H);
+  return base + deltaFeet;
 }
 
 // ============================================================
@@ -283,113 +280,6 @@ function drawTargetImage(ctx, alpha) {
   ctx.restore();
 }
 
-// ============================================================
-// 画像から輪郭を抽出（スコア計算用）
-// ============================================================
-function extractContours() {
-  const W = CFG.canvas.width;
-  const H = CFG.canvas.height;
-  const CAT = CFG.cat;
-  const SC = CFG.scoring;
-  const SB = CFG.strokeBounds;
-
-  const offscreen = document.createElement('canvas');
-  offscreen.width = W;
-  offscreen.height = H;
-  const octx = offscreen.getContext('2d');
-  drawTargetImage(octx, 1.0);
-
-  const imageData = octx.getImageData(0, 0, W, H);
-  const pixels = imageData.data;
-
-  const startPx = Math.floor(CAT.noseX * W);
-  const endPx = Math.ceil(CAT.tailX * W);
-  const sampleCount = Math.floor((endPx - startPx) / SC.sampleStep) + 1;
-
-  refTopY = new Float64Array(sampleCount);
-  refBottomY = new Float64Array(sampleCount);
-
-  let idx = 0;
-  for (let px = startPx; px <= endPx; px += SC.sampleStep) {
-    let topOuter = -1;
-    let topInner = -1;
-    let bottomOuter = -1;
-    let bottomInner = -1;
-
-    // 上の線：外端（上端）を見つけてから、線の内端（下端）を探す
-    for (let y = 0; y < H; y++) {
-      if (pixels[(y * W + px) * 4 + 3] > SC.alphaThreshold) {
-        topOuter = y;
-        // 線の内端（最初の透明ピクセル）を探す
-        for (let y2 = y + 1; y2 < H; y2++) {
-          if (pixels[(y2 * W + px) * 4 + 3] <= SC.alphaThreshold) {
-            topInner = y2 - 1;
-            break;
-          }
-        }
-        if (topInner === -1) topInner = topOuter;
-        break;
-      }
-    }
-
-    // 下の線：外端（下端）を見つけてから、線の内端（上端）を探す
-    for (let y = H - 1; y >= 0; y--) {
-      if (pixels[(y * W + px) * 4 + 3] > SC.alphaThreshold) {
-        bottomOuter = y;
-        // 線の内端（最初の透明ピクセル）を探す
-        const xr_bottom = px / W;
-        const nearFeetEnd = xr_bottom >= SB.feetEndX - 0.02;
-        const nearFeetStart = xr_bottom <= SB.feetStartX + 0.00;
-        const maxLineSearch = (nearFeetEnd || nearFeetStart)
-          ? CFG.drawing.playerLineWidth * 3 : H;
-        for (let y2 = y - 1; y2 >= Math.max(0, y - maxLineSearch); y2--) {
-          if (pixels[(y2 * W + px) * 4 + 3] <= SC.alphaThreshold) {
-            bottomInner = y2 + 1;
-            break;
-          }
-        }
-        if (bottomInner === -1) bottomInner = bottomOuter;
-        break;
-      }
-    }
-
-    // 線の中央を基準にする
-    let topFound = topOuter !== -1 ? (topOuter + topInner) / 2 : -1;
-    let bottomFound = bottomOuter !== -1 ? (bottomOuter + bottomInner) / 2 : -1;
-
-    if (topFound === -1) topFound = idx > 0 ? refTopY[idx - 1] : CAT.backY * H;
-    if (bottomFound === -1) bottomFound = idx > 0 ? refBottomY[idx - 1] : CAT.bottomY * H;
-
-    refTopY[idx] = topFound;
-    refBottomY[idx] = bottomFound;
-    idx++;
-  }
-
-  smoothContour(refTopY, SC.smoothingRadius);
-  smoothContour(refBottomY, SC.smoothingRadius);
-
-  // デバッグ: refBottomYの左端付近の値を出力
-  const feetStartPx = Math.floor(SB.feetStartX * W);
-  console.log('=== refBottomY 左端付近 (feetStartX=' + SB.feetStartX + ', px=' + feetStartPx + ') ===');
-  for (let px = feetStartPx - 10; px <= feetStartPx + 40; px += SC.sampleStep) {
-    const i = Math.floor((px - startPx) / SC.sampleStep);
-    if (i >= 0 && i < refBottomY.length) {
-      const actualPx = startPx + i * SC.sampleStep;
-      const xr = actualPx / W;
-      console.log('px=' + actualPx + ' xr=' + xr.toFixed(4) + ' refBottomY=' + refBottomY[i].toFixed(1));
-    }
-  }
-
-}
-
-function smoothContour(arr, radius) {
-  const copy = new Float64Array(arr);
-  for (let i = radius; i < arr.length - radius; i++) {
-    let sum = 0;
-    for (let j = -radius; j <= radius; j++) sum += copy[i + j];
-    arr[i] = sum / (radius * 2 + 1);
-  }
-}
 
 // ============================================================
 // ベースラインLUT（元画像から固定パスを抽出）
@@ -422,14 +312,6 @@ function getTailContribution(xRatio, params, W, H) {
   return params.tailHeight * smoothTail;
 }
 
-function getTopYNoEars(xRatio, params, W, H) {
-  return getTopY(xRatio, params, W, H) + getEarContribution(xRatio, params, W);
-}
-
-function getSingleEarContribution(xRatio, earCenterPx, params, W) {
-  const x = xRatio * W;
-  return params.earHeight * Math.exp(-((x - earCenterPx) ** 2) / (2 * params.earWidth ** 2));
-}
 
 function getFeetContribution(xRatio, params, W, H) {
   const CAT = CFG.cat;
@@ -447,57 +329,6 @@ function getFeetContribution(xRatio, params, W, H) {
   return feetEnv * wave;
 }
 
-function buildBaselineLUT() {
-  if (!refTopY || !refBottomY) return;
-
-  const W = CFG.canvas.width;
-  const H = CFG.canvas.height;
-  const CAT = CFG.cat;
-  const SC = CFG.scoring;
-  const answer = CFG.answerParams;
-
-  const startPx = Math.floor(CAT.noseX * W);
-  const endPx = Math.ceil(CAT.tailX * W);
-  const sampleCount = Math.floor((endPx - startPx) / SC.sampleStep) + 1;
-
-  refTopBaseline = new Float64Array(sampleCount);
-  refBottomBaseline = new Float64Array(sampleCount);
-
-  const SB = CFG.strokeBounds;
-  const SJ = CFG.strokeJunctions;
-
-  let idx = 0;
-  for (let px = startPx; px <= endPx; px += SC.sampleStep) {
-    const xr = px / W;
-    // 上線: baseline = refTopY + ears + tail (可変部分を足し戻す)
-    refTopBaseline[idx] = refTopY[idx]
-      + getEarContribution(xr, answer, W)
-      + getTailContribution(xr, answer, W, H);
-    // 下線: baseline = refBottomY - feet (可変部分を引き戻す)
-    // 足の右端以降はrefBottomYがお尻/しっぽの線を拾うため、端点値で固定
-    let bottomBase;
-    if (xr >= SB.feetEndX) {
-      bottomBase = SJ.feetEnd_bottomY * H;
-    } else {
-      bottomBase = refBottomY[idx]
-        - getFeetContribution(xr, answer, W, H);
-    }
-    refBottomBaseline[idx] = bottomBase;
-    idx++;
-  }
-}
-
-function interpolateBaseline(lut, xRatio) {
-  if (!lut) return null;
-  const W = CFG.canvas.width;
-  const startPx = Math.floor(CFG.cat.noseX * W);
-  const px = xRatio * W;
-  const idx = (px - startPx) / CFG.scoring.sampleStep;
-  const i0 = Math.max(0, Math.floor(idx));
-  const i1 = Math.min(i0 + 1, lut.length - 1);
-  const frac = idx - Math.floor(idx);
-  return lut[i0] * (1 - frac) + lut[i1] * frac;
-}
 
 // ============================================================
 // ゲーム状態
@@ -610,25 +441,23 @@ function drawGrid(ctx, W, H) {
 // スコア計算
 // ============================================================
 function calculateScore() {
-  if (!refTopY || !refBottomY) return 0;
+  if (!catPath) return 0;
 
   const W = CFG.canvas.width;
   const H = CFG.canvas.height;
-  const CAT = CFG.cat;
   const SB = CFG.strokeBounds;
   const SC = CFG.scoring;
-  const startPx = Math.floor(CAT.noseX * W);
   let totalError = 0;
   let count = 0;
 
   // スライダー影響がある3ストロークの範囲（端点を除いた中間ピクセルのみ）
   const scoredStrokes = [
     // 耳（上の線）: earZoneStartX ～ earZoneEndX
-    { startX: SB.earZoneStartX, endX: SB.earZoneEndX, getY: (xr) => getTopY(xr, player, W, H), ref: refTopY },
+    { startX: SB.earZoneStartX, endX: SB.earZoneEndX, getY: (xr) => getTopY(xr, player, W, H), refY: (xr) => splineY(catPath.topLine, xr) * H },
     // しっぽ（上の線）: tailTopStartX ～ tailEndX
-    { startX: SB.tailTopStartX, endX: SB.tailEndX, getY: (xr) => getTopY(xr, player, W, H), ref: refTopY },
+    { startX: SB.tailTopStartX, endX: SB.tailEndX, getY: (xr) => getTopY(xr, player, W, H), refY: (xr) => splineY(catPath.topLine, xr) * H },
     // 足（下の線）: feetStartX ～ feetEndX
-    { startX: SB.feetStartX, endX: SB.feetEndX, getY: (xr) => getBottomY(xr, player, W, H), ref: refBottomY },
+    { startX: SB.feetStartX, endX: SB.feetEndX, getY: (xr) => getBottomY(xr, player, W, H), refY: (xr) => splineY(catPath.bottomLine, xr) * H },
   ];
 
   for (const stroke of scoredStrokes) {
@@ -636,14 +465,11 @@ function calculateScore() {
     const ePx = Math.ceil(stroke.endX * W);
 
     for (let px = sPx; px <= ePx; px += SC.sampleStep) {
-      // 端点はスキップ（描画で固定値を使っているため）
       if (px <= sPx || px >= ePx) continue;
 
       const xr = px / W;
       const playerY = stroke.getY(xr);
-      const refIdx = Math.round((px - startPx) / SC.sampleStep);
-      if (refIdx < 0 || refIdx >= stroke.ref.length) continue;
-      const refY = stroke.ref[refIdx];
+      const refY = stroke.refY(xr);
 
       totalError += (refY - playerY) ** 2;
       count++;
@@ -721,14 +547,12 @@ function backToTitle() {
 // 初期化
 // ============================================================
 async function init() {
-  await Promise.all([loadConfig(), loadLang(), loadImages()]);
+  await Promise.all([loadConfig(), loadLang(), loadImages(), loadCatPath()]);
   imagesLoaded = true;
 
   applyLabels();
   applySliderRanges();
   setupSliderEvents();
-  extractContours();
-  buildBaselineLUT();
   // TODO: 開発中は直接ゲーム画面へ（あとで戻す）
   // showScreen('title');
   // renderTitle();
@@ -757,106 +581,7 @@ window.debugFit = function () {
 
 window.debugSetAnswer = function (overrides) {
   Object.assign(CFG.answerParams, overrides);
-  buildBaselineLUT();
   window.debugFit();
-};
-
-// 自動フィッティング: answerParamsを最適化
-window.autoFit = function () {
-  if (!refTopY || !refBottomY) { console.error('extractContours未実行'); return; }
-
-  const W = CFG.canvas.width;
-  const H = CFG.canvas.height;
-  const CAT = CFG.cat;
-  const SC = CFG.scoring;
-  const startPx = Math.floor(CAT.noseX * W);
-  const endPx = Math.ceil(CAT.tailX * W);
-
-  // 現在の数式ベースラインとの誤差を計算
-  function calcError(params) {
-    let err = 0;
-    let count = 0;
-    let idx = 0;
-    for (let px = startPx; px <= endPx; px += SC.sampleStep) {
-      const xr = px / W;
-      const t = (xr - CAT.noseX) / (CAT.tailX - CAT.noseX);
-      if (t < 0 || t > 1) { idx++; continue; }
-
-      // 上線: refTopY = baseline - ears - tail を期待
-      const ears = getEarContribution(xr, params, W);
-      const tail = getTailContribution(xr, params, W, H);
-      const feet = getFeetContribution(xr, params, W, H);
-
-      // 上線の誤差（LUTなしの直接比較）
-      // getTopY(数式) = backY + faceY - ears - tail
-      // 理想: refTopY[idx] = getTopY(answerParams)
-      // ここでは数式ベースラインは使わず、refTopYとの差を最小化
-      const backY_val = CAT.backY * H;
-      const noseY_val = CAT.noseY * H;
-      const faceT = Math.max(0, 1 - t * CFG.topLine.faceDecayRate);
-      const faceY = faceT * (noseY_val - backY_val);
-      const mathTop = backY_val + faceY - ears - tail;
-
-      // ※自動フィッティングではLUTを使わず、直接refTopYとparamsでの曲線を比較
-      // refTopY = 画像の正解 → paramsでの曲線がこれに近いほど良い
-      err += (refTopY[idx] - mathTop) ** 2;
-
-      // 下線: LUTベースラインを使用
-      const botBaseline = interpolateBaseline(refBottomBaseline, xr);
-      const mathBot = (botBaseline !== null ? botBaseline : CAT.bottomY * H) + feet;
-      err += (refBottomY[idx] - mathBot) ** 2;
-
-      count += 2;
-      idx++;
-    }
-    return Math.sqrt(err / count);
-  }
-
-  // グリッドサーチ + 局所最適化
-  let best = { ...CFG.answerParams };
-  let bestErr = calcError(best);
-  console.log('初期誤差:', bestErr.toFixed(2));
-
-  // 各パラメータの探索範囲
-  const ranges = {
-    earHeight: [30, 150, 5],
-    earGap:    [5, 60, 3],
-    earWidth:  [8, 50, 3],
-    tailHeight:[20, 150, 5],
-    feetAmp:   [10, 70, 3],
-    feetFreq:  [2.0, 8.0, 0.2],
-    feetPhase: [-3.14, 3.14, 0.15]
-  };
-
-  // 3ラウンドの反復最適化
-  for (let round = 0; round < 3; round++) {
-    for (const [key, [min, max, step]] of Object.entries(ranges)) {
-      let localBest = best[key];
-      let localBestErr = bestErr;
-      const s = step / (round + 1); // ラウンドごとにステップを細かく
-      for (let v = min; v <= max; v += s) {
-        const trial = { ...best, [key]: v };
-        const e = calcError(trial);
-        if (e < localBestErr) {
-          localBestErr = e;
-          localBest = v;
-        }
-      }
-      best[key] = localBest;
-      bestErr = localBestErr;
-    }
-    console.log(`ラウンド${round + 1} 誤差: ${bestErr.toFixed(2)}`);
-  }
-
-  // 小数点を丸める
-  for (const key of Object.keys(ranges)) {
-    best[key] = Math.round(best[key] * 100) / 100;
-  }
-
-  console.log('最適化結果 answerParams:', JSON.stringify(best, null, 2));
-  console.log('最終誤差:', calcError(best).toFixed(2));
-  console.log('適用するには: debugSetAnswer(' + JSON.stringify(best) + ')');
-  return best;
 };
 
 init();

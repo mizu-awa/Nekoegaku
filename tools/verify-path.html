@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>ねこパスエディタ</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 20px; font-family: monospace; background: #f5f5f5; }
+  h2 { margin: 10px 0 5px; }
+  canvas { border: 1px solid #999; background: #fff; display: block; margin: 10px 0; cursor: crosshair; }
+  .panel { background: #fff; padding: 15px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; }
+  label { display: inline-block; margin: 2px 8px; font-size: 13px; }
+  textarea { width: 100%; height: 250px; font-size: 11px; font-family: monospace; }
+  button { margin: 5px; padding: 6px 16px; cursor: pointer; }
+  button.primary { background: #2ecc71; color: #fff; border: none; font-weight: bold; }
+  .legend { font-size: 12px; margin: 5px 0; }
+  .legend span { display: inline-block; width: 30px; height: 3px; vertical-align: middle; margin-right: 5px; }
+  .slider-row { display: flex; align-items: center; gap: 10px; margin: 5px 0; }
+  .slider-row input[type=range] { flex: 1; }
+  .slider-row .val { min-width: 80px; font-size: 12px; }
+  .info { font-size: 12px; color: #666; margin: 3px 0; }
+  .status { font-size: 13px; color: #333; font-weight: bold; margin: 5px 0; }
+</style>
+</head>
+<body>
+<h1>ねこパスエディタ</h1>
+
+<div class="panel">
+  <h2>表示</h2>
+  <label><input type="checkbox" id="chk-image" checked> 元画像</label>
+  <label><input type="checkbox" id="chk-contour" checked> 抽出輪郭</label>
+  <label><input type="checkbox" id="chk-spline" checked> スプライン曲線</label>
+  <label><input type="checkbox" id="chk-points" checked> 制御点</label>
+  <label><input type="checkbox" id="chk-handles"> 接線ハンドル</label>
+  <label><input type="checkbox" id="chk-grid"> グリッド</label>
+
+  <div class="legend">
+    <span style="background:#ff0000"></span>抽出輪郭(上)
+    <span style="background:#0000ff"></span>抽出輪郭(下)
+    <span style="background:#00cc00"></span>スプライン(上)
+    <span style="background:#ff8800"></span>スプライン(下)
+  </div>
+</div>
+
+<div class="panel">
+  <h2>間引き (Douglas-Peucker)</h2>
+  <div class="slider-row">
+    <label>上の線 許容誤差:</label>
+    <input type="range" id="sl-tol-top" min="0.1" max="20" step="0.1" value="3">
+    <span class="val" id="val-tol-top">3.0px</span>
+  </div>
+  <div class="slider-row">
+    <label>下の線 許容誤差:</label>
+    <input type="range" id="sl-tol-bot" min="0.1" max="20" step="0.1" value="3">
+    <span class="val" id="val-tol-bot">3.0px</span>
+  </div>
+  <div class="status" id="point-count"></div>
+  <div class="info">
+    ドラッグ: 制御点を移動 / ダブルクリック: 制御点を追加 / 右クリック: 制御点を削除<br>
+    Shift+ドラッグ: 接線ハンドルを表示して曲がり方を調整 / Shift+右クリック: 接線をリセット
+  </div>
+</div>
+
+<canvas id="cv" width="800" height="400"></canvas>
+
+<div class="panel">
+  <h2>誤差情報</h2>
+  <div id="error-info" style="font-size:12px; white-space:pre; line-height:1.6;"></div>
+</div>
+
+<div class="panel">
+  <h2>エクスポート</h2>
+  <button class="primary" onclick="exportPath()">cat-path.json 用データをエクスポート</button>
+  <button onclick="navigator.clipboard.writeText(document.getElementById('export-data').value)">クリップボードにコピー</button>
+  <textarea id="export-data" readonly></textarea>
+</div>
+
+<script>
+const W = 800, H = 400;
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+
+const headImg = new Image();
+const tailImg = new Image();
+let imagesLoaded = false;
+
+// 抽出された輪郭 (生データ)
+let extractedTop = [];
+let extractedBottom = [];
+
+// 間引き後の制御点 (編集可能)
+// 各点: { x, y, tx?, ty? }
+//   tx, ty = カスタム接線ベクトル (未設定なら Catmull-Rom 自動計算)
+let ctrlTop = [];
+let ctrlBottom = [];
+
+// ドラッグ状態
+let dragging = null;
+// { type: 'point'|'handle', line: 'top'|'bottom', index: number }
+const DRAG_RADIUS = 8;
+const HANDLE_RADIUS = 6;
+const HANDLE_LEN = 40; // 接線ハンドルの表示長さ(px)
+
+// ============================================================
+// 画像読み込み・輪郭抽出
+// ============================================================
+function loadImages() {
+  return new Promise(resolve => {
+    let loaded = 0;
+    const onLoad = () => { if (++loaded === 2) { imagesLoaded = true; resolve(); } };
+    headImg.src = '../img/head.png';
+    tailImg.src = '../img/tail.png';
+    headImg.onload = onLoad;
+    tailImg.onload = onLoad;
+  });
+}
+
+function extractContours() {
+  const offscreen = document.createElement('canvas');
+  offscreen.width = W;
+  offscreen.height = H;
+  const octx = offscreen.getContext('2d');
+  octx.drawImage(headImg, 0, 0, W / 2, H);
+  octx.drawImage(tailImg, W / 2, 0, W / 2, H);
+
+  const imageData = octx.getImageData(0, 0, W, H);
+  const pixels = imageData.data;
+  const threshold = 128;
+  const step = 2;
+
+  extractedTop = [];
+  extractedBottom = [];
+
+  for (let px = 0; px < W; px += step) {
+    let topOuter = -1, topInner = -1;
+    let bottomOuter = -1, bottomInner = -1;
+
+    for (let y = 0; y < H; y++) {
+      if (pixels[(y * W + px) * 4 + 3] > threshold) {
+        topOuter = y;
+        for (let y2 = y + 1; y2 < H; y2++) {
+          if (pixels[(y2 * W + px) * 4 + 3] <= threshold) { topInner = y2 - 1; break; }
+        }
+        if (topInner === -1) topInner = topOuter;
+        break;
+      }
+    }
+
+    for (let y = H - 1; y >= 0; y--) {
+      if (pixels[(y * W + px) * 4 + 3] > threshold) {
+        bottomOuter = y;
+        for (let y2 = y - 1; y2 >= 0; y2--) {
+          if (pixels[(y2 * W + px) * 4 + 3] <= threshold) { bottomInner = y2 + 1; break; }
+        }
+        if (bottomInner === -1) bottomInner = bottomOuter;
+        break;
+      }
+    }
+
+    if (topOuter !== -1)
+      extractedTop.push({ x: px / W, y: ((topOuter + topInner) / 2) / H });
+    if (bottomOuter !== -1)
+      extractedBottom.push({ x: px / W, y: ((bottomOuter + bottomInner) / 2) / H });
+  }
+
+  smoothPoints(extractedTop, 3);
+  smoothPoints(extractedBottom, 3);
+}
+
+function smoothPoints(pts, radius) {
+  const orig = pts.map(p => p.y);
+  for (let i = radius; i < pts.length - radius; i++) {
+    let sum = 0;
+    for (let j = -radius; j <= radius; j++) sum += orig[i + j];
+    pts[i].y = sum / (radius * 2 + 1);
+  }
+}
+
+// ============================================================
+// Douglas-Peucker 間引き
+// ============================================================
+function douglasPeucker(points, tolerance) {
+  if (points.length <= 2) return points.map(p => ({ x: p.x, y: p.y }));
+  const tolY = tolerance / H;
+
+  let maxDist = 0, maxIdx = 0;
+  const first = points[0], last = points[points.length - 1];
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const d = perpDist(points[i], first, last);
+    if (d > maxDist) { maxDist = d; maxIdx = i; }
+  }
+
+  if (maxDist > tolY) {
+    const left = douglasPeucker(points.slice(0, maxIdx + 1), tolerance);
+    const right = douglasPeucker(points.slice(maxIdx), tolerance);
+    return left.slice(0, -1).concat(right);
+  }
+  return [{ x: first.x, y: first.y }, { x: last.x, y: last.y }];
+}
+
+function perpDist(point, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.abs(point.y - a.y);
+  const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lenSq));
+  return Math.abs(point.y - (a.y + t * dy));
+}
+
+function simplify() {
+  const tolTop = parseFloat(document.getElementById('sl-tol-top').value);
+  const tolBot = parseFloat(document.getElementById('sl-tol-bot').value);
+  document.getElementById('val-tol-top').textContent = tolTop.toFixed(1) + 'px';
+  document.getElementById('val-tol-bot').textContent = tolBot.toFixed(1) + 'px';
+
+  ctrlTop = douglasPeucker(extractedTop, tolTop);
+  ctrlBottom = douglasPeucker(extractedBottom, tolBot);
+
+  document.getElementById('point-count').textContent =
+    `上の線: ${ctrlTop.length}点 / 下の線: ${ctrlBottom.length}点`;
+  draw();
+}
+
+// ============================================================
+// Hermite スプライン補間 (Catmull-Rom + カスタム接線)
+// ============================================================
+
+// 点iの接線を取得。カスタム接線があればそれを使用、なければCatmull-Rom自動計算
+function getTangent(points, i) {
+  const p = points[i];
+  if (p.tx !== undefined && p.ty !== undefined) {
+    return { x: p.tx, y: p.ty };
+  }
+  // Catmull-Rom 自動接線: (p[i+1] - p[i-1]) / 2
+  const prev = points[Math.max(0, i - 1)];
+  const next = points[Math.min(points.length - 1, i + 1)];
+  return {
+    x: (next.x - prev.x) / 2,
+    y: (next.y - prev.y) / 2
+  };
+}
+
+// Hermite 補間で xRatio に対応する Y を返す
+function hermiteY(points, xRatio) {
+  if (!points || points.length < 2) return null;
+  if (xRatio <= points[0].x) return points[0].y;
+  if (xRatio >= points[points.length - 1].x) return points[points.length - 1].y;
+
+  // セグメントを探す
+  let seg = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    if (xRatio >= points[i].x && xRatio <= points[i + 1].x) { seg = i; break; }
+  }
+
+  const p0 = points[seg];
+  const p1 = points[seg + 1];
+  const m0 = getTangent(points, seg);
+  const m1 = getTangent(points, seg + 1);
+
+  const segLen = p1.x - p0.x;
+  if (segLen === 0) return p0.y;
+  const t = (xRatio - p0.x) / segLen;
+  const t2 = t * t, t3 = t2 * t;
+
+  // Hermite 基底関数
+  const h00 = 2 * t3 - 3 * t2 + 1;
+  const h10 = t3 - 2 * t2 + t;
+  const h01 = -2 * t3 + 3 * t2;
+  const h11 = t3 - t2;
+
+  // 接線はセグメント長でスケール
+  return h00 * p0.y + h10 * m0.y * segLen / ((m0.x === 0 ? 1 : m0.x)) * segLen
+    // ... 複雑になるので、元のCatmull-Romの定式化に近い形で実装
+    ? hermiteSimple(p0, p1, m0, m1, t)
+    : p0.y;
+}
+
+// シンプルなHermite補間 (Catmull-Rom互換)
+function hermiteSimple(p0, p1, m0, m1, t) {
+  const t2 = t * t, t3 = t2 * t;
+  // Catmull-Rom式: y成分のみ補間、接線のy成分を使用
+  return (2 * t3 - 3 * t2 + 1) * p0.y
+       + (t3 - 2 * t2 + t) * m0.y
+       + (-2 * t3 + 3 * t2) * p1.y
+       + (t3 - t2) * m1.y;
+}
+
+// 実際の補間関数
+function splineY(points, xRatio) {
+  if (!points || points.length < 2) return null;
+  if (xRatio <= points[0].x) return points[0].y;
+  if (xRatio >= points[points.length - 1].x) return points[points.length - 1].y;
+
+  let seg = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    if (xRatio >= points[i].x && xRatio <= points[i + 1].x) { seg = i; break; }
+  }
+
+  const p0 = points[seg];
+  const p1 = points[seg + 1];
+
+  const segLenX = p1.x - p0.x;
+  if (segLenX === 0) return p0.y;
+  const t = (xRatio - p0.x) / segLenX;
+
+  // 各点の接線(y成分)を取得
+  // Catmull-Rom: m_i = (p_{i+1}.y - p_{i-1}.y) / 2  ただしtはセグメント間で正規化
+  // カスタム接線がある場合はそれを使う
+  const tanY0 = getScaledTanY(points, seg);
+  const tanY1 = getScaledTanY(points, seg + 1);
+
+  const t2 = t * t, t3 = t2 * t;
+  return (2 * t3 - 3 * t2 + 1) * p0.y
+       + (t3 - 2 * t2 + t) * tanY0
+       + (-2 * t3 + 3 * t2) * p1.y
+       + (t3 - t2) * tanY1;
+}
+
+// Hermite用のスケール済み接線Y成分
+function getScaledTanY(points, i) {
+  const p = points[i];
+  if (p.tx !== undefined && p.ty !== undefined) {
+    // カスタム接線: ty はそのまま使う (すでにスケール済み想定)
+    return p.ty;
+  }
+  // Catmull-Rom デフォルト接線
+  const prev = points[Math.max(0, i - 1)];
+  const next = points[Math.min(points.length - 1, i + 1)];
+  return (next.y - prev.y) / 2;
+}
+
+// ============================================================
+// 接線ハンドルの表示位置を計算
+// ============================================================
+function getHandlePos(points, i) {
+  const p = points[i];
+  const tanY = getScaledTanY(points, i);
+
+  // 接線の方向を計算 (Catmull-Romの場合)
+  let tanX;
+  if (p.tx !== undefined) {
+    tanX = p.tx;
+  } else {
+    const prev = points[Math.max(0, i - 1)];
+    const next = points[Math.min(points.length - 1, i + 1)];
+    tanX = (next.x - prev.x) / 2;
+  }
+
+  // 正規化してハンドル長さに
+  const len = Math.sqrt((tanX * W) ** 2 + (tanY * H) ** 2);
+  if (len === 0) return { x: p.x * W + HANDLE_LEN, y: p.y * H };
+
+  const scale = HANDLE_LEN / len;
+  return {
+    // ハンドルは接線の正方向
+    x: p.x * W + tanX * W * scale,
+    y: p.y * H + tanY * H * scale
+  };
+}
+
+// ============================================================
+// 描画
+// ============================================================
+function drawSpline(points, color, width) {
+  if (points.length < 2) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+
+  const startPx = Math.floor(points[0].x * W);
+  const endPx = Math.ceil(points[points.length - 1].x * W);
+
+  for (let px = startPx; px <= endPx; px++) {
+    const xr = px / W;
+    const y = splineY(points, xr);
+    if (y === null) continue;
+    if (px === startPx) ctx.moveTo(px, y * H);
+    else ctx.lineTo(px, y * H);
+  }
+  ctx.stroke();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  const showImage = document.getElementById('chk-image').checked;
+  const showContour = document.getElementById('chk-contour').checked;
+  const showSpline = document.getElementById('chk-spline').checked;
+  const showPoints = document.getElementById('chk-points').checked;
+  const showHandles = document.getElementById('chk-handles').checked;
+  const showGrid = document.getElementById('chk-grid').checked;
+
+  if (showGrid) {
+    ctx.strokeStyle = '#eee';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= W; x += 40) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    for (let y = 0; y <= H; y += 40) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    ctx.fillStyle = '#aaa';
+    ctx.font = '9px monospace';
+    for (let x = 0; x <= W; x += 80) ctx.fillText((x / W).toFixed(2), x + 2, 10);
+    for (let y = 0; y <= H; y += 40) ctx.fillText((y / H).toFixed(2), 2, y + 10);
+  }
+
+  if (showImage && imagesLoaded) {
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.drawImage(headImg, 0, 0, W / 2, H);
+    ctx.drawImage(tailImg, W / 2, 0, W / 2, H);
+    ctx.restore();
+  }
+
+  if (showContour) {
+    drawPolyline(extractedTop, '#ff0000', 1);
+    drawPolyline(extractedBottom, '#0000ff', 1);
+  }
+
+  if (showSpline) {
+    drawSpline(ctrlTop, '#00cc00', 2.5);
+    drawSpline(ctrlBottom, '#ff8800', 2.5);
+  }
+
+  if (showPoints || showHandles) {
+    drawCtrlPoints(ctrlTop, '#00cc00', '#009900', showPoints, showHandles);
+    drawCtrlPoints(ctrlBottom, '#ff8800', '#cc6600', showPoints, showHandles);
+  }
+
+  computeErrors();
+}
+
+function drawPolyline(points, color, width) {
+  if (points.length < 2) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x * W, points[0].y * H);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x * W, points[i].y * H);
+  ctx.stroke();
+}
+
+function drawCtrlPoints(points, fill, stroke, showPts, showHandles) {
+  for (let i = 0; i < points.length; i++) {
+    const px = points[i].x * W;
+    const py = points[i].y * H;
+
+    if (showHandles || points[i].tx !== undefined) {
+      // 接線ハンドルを描画
+      const hp = getHandlePos(points, i);
+      const hasCustom = points[i].tx !== undefined;
+
+      // ハンドル線
+      ctx.strokeStyle = hasCustom ? '#e74c3c' : 'rgba(150,150,150,0.5)';
+      ctx.lineWidth = hasCustom ? 1.5 : 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      // 逆方向にも描画
+      ctx.moveTo(2 * px - hp.x, 2 * py - hp.y);
+      ctx.lineTo(hp.x, hp.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // ハンドル点
+      ctx.fillStyle = hasCustom ? '#e74c3c' : 'rgba(150,150,150,0.6)';
+      ctx.strokeStyle = hasCustom ? '#c0392b' : '#999';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(hp.x, hp.y, HANDLE_RADIUS - 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // 逆側のハンドル点
+      ctx.beginPath();
+      ctx.arc(2 * px - hp.x, 2 * py - hp.y, HANDLE_RADIUS - 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    if (showPts) {
+      // 制御点本体
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(px, py, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+}
+
+// ============================================================
+// 誤差計算
+// ============================================================
+function computeErrors() {
+  if (!ctrlTop.length || !ctrlBottom.length) return;
+
+  let topErr = 0, topCount = 0;
+  let botErr = 0, botCount = 0;
+
+  for (const pt of extractedTop) {
+    const sy = splineY(ctrlTop, pt.x);
+    if (sy !== null) { const d = (pt.y - sy) * H; topErr += d * d; topCount++; }
+  }
+  for (const pt of extractedBottom) {
+    const sy = splineY(ctrlBottom, pt.x);
+    if (sy !== null) { const d = (pt.y - sy) * H; botErr += d * d; botCount++; }
+  }
+
+  const topRmse = topCount > 0 ? Math.sqrt(topErr / topCount) : 0;
+  const botRmse = botCount > 0 ? Math.sqrt(botErr / botCount) : 0;
+  const totalRmse = Math.sqrt((topErr + botErr) / (topCount + botCount));
+
+  const customTopCount = ctrlTop.filter(p => p.tx !== undefined).length;
+  const customBotCount = ctrlBottom.filter(p => p.tx !== undefined).length;
+
+  document.getElementById('error-info').innerHTML =
+    `上の線: RMSE ${topRmse.toFixed(2)}px (${ctrlTop.length}点, 接線カスタム${customTopCount}点)\n` +
+    `下の線: RMSE ${botRmse.toFixed(2)}px (${ctrlBottom.length}点, 接線カスタム${customBotCount}点)\n` +
+    `合計:   RMSE ${totalRmse.toFixed(2)}px`;
+}
+
+// ============================================================
+// マウス操作
+// ============================================================
+function getMousePos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: (e.clientX - rect.left) / rect.width * W, y: (e.clientY - rect.top) / rect.height * H };
+}
+
+function findNearest(mx, my, shiftKey) {
+  let best = null;
+  let bestDist = Infinity;
+
+  const search = (points, lineName) => {
+    for (let i = 0; i < points.length; i++) {
+      // 接線ハンドル (Shiftキー押下時 or 常時)
+      if (shiftKey || points[i].tx !== undefined) {
+        const hp = getHandlePos(points, i);
+        let d = (hp.x - mx) ** 2 + (hp.y - my) ** 2;
+        if (d < bestDist && d < (HANDLE_RADIUS + 4) ** 2) {
+          bestDist = d; best = { type: 'handle', line: lineName, index: i, side: 1 };
+        }
+        // 逆側
+        const rhx = 2 * points[i].x * W - hp.x;
+        const rhy = 2 * points[i].y * H - hp.y;
+        d = (rhx - mx) ** 2 + (rhy - my) ** 2;
+        if (d < bestDist && d < (HANDLE_RADIUS + 4) ** 2) {
+          bestDist = d; best = { type: 'handle', line: lineName, index: i, side: -1 };
+        }
+      }
+
+      // 制御点本体
+      const dx = points[i].x * W - mx, dy = points[i].y * H - my;
+      const d = dx * dx + dy * dy;
+      if (d < bestDist && d < (DRAG_RADIUS + 2) ** 2) {
+        bestDist = d; best = { type: 'point', line: lineName, index: i };
+      }
+    }
+  };
+
+  search(ctrlTop, 'top');
+  search(ctrlBottom, 'bottom');
+  return best;
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  const { x, y } = getMousePos(e);
+  dragging = findNearest(x, y, e.shiftKey);
+
+  // Shift+クリックで制御点近くをクリック → ハンドルを出す
+  if (!dragging && e.shiftKey) {
+    const nearPt = findNearest(x, y, false);
+    if (nearPt && nearPt.type === 'point') {
+      // この点のハンドルを表示開始 (カスタム接線をセット)
+      const pts = nearPt.line === 'top' ? ctrlTop : ctrlBottom;
+      const p = pts[nearPt.index];
+      if (p.tx === undefined) {
+        // 現在の自動接線を初期値としてセット
+        const prev = pts[Math.max(0, nearPt.index - 1)];
+        const next = pts[Math.min(pts.length - 1, nearPt.index + 1)];
+        p.tx = (next.x - prev.x) / 2;
+        p.ty = (next.y - prev.y) / 2;
+      }
+      dragging = { type: 'handle', line: nearPt.line, index: nearPt.index, side: 1 };
+      document.getElementById('chk-handles').checked = true;
+      draw();
+    }
+  }
+
+  if (dragging) {
+    canvas.style.cursor = 'grabbing';
+    e.preventDefault();
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const { x, y } = getMousePos(e);
+
+  if (dragging) {
+    const pts = dragging.line === 'top' ? ctrlTop : ctrlBottom;
+    const idx = dragging.index;
+
+    if (dragging.type === 'point') {
+      const minX = idx > 0 ? pts[idx - 1].x + 0.001 : 0;
+      const maxX = idx < pts.length - 1 ? pts[idx + 1].x - 0.001 : 1;
+      pts[idx].x = Math.max(minX, Math.min(maxX, x / W));
+      pts[idx].y = y / H;
+    } else if (dragging.type === 'handle') {
+      const p = pts[idx];
+      // ハンドル位置からベクトルを逆算
+      let hx, hy;
+      if (dragging.side === 1) {
+        hx = x / W - p.x;
+        hy = y / H - p.y;
+      } else {
+        // 逆側ハンドル: 反転
+        hx = p.x - x / W;
+        hy = p.y - y / H;
+      }
+
+      // ハンドル表示長さからスケール逆算してtx,tyに戻す
+      const displayLen = Math.sqrt((hx * W) ** 2 + (hy * H) ** 2);
+      if (displayLen > 0) {
+        // 接線の大きさは、自動計算時と同等のスケールに正規化
+        const prev = pts[Math.max(0, idx - 1)];
+        const next = pts[Math.min(pts.length - 1, idx + 1)];
+        const autoTx = (next.x - prev.x) / 2;
+        const autoTy = (next.y - prev.y) / 2;
+        const autoLen = Math.sqrt((autoTx * W) ** 2 + (autoTy * H) ** 2);
+        const scale = autoLen / displayLen;
+
+        p.tx = hx * scale;
+        p.ty = hy * scale;
+      }
+    }
+    draw();
+  } else {
+    const near = findNearest(x, y, e.shiftKey);
+    canvas.style.cursor = near ? 'grab' : 'crosshair';
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (dragging) { dragging = null; canvas.style.cursor = 'crosshair'; }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  if (dragging) { dragging = null; canvas.style.cursor = 'crosshair'; }
+});
+
+// ダブルクリック: 制御点を追加
+canvas.addEventListener('dblclick', (e) => {
+  const { x, y } = getMousePos(e);
+  const xr = x / W, yr = y / H;
+
+  const topY = splineY(ctrlTop, xr);
+  const botY = splineY(ctrlBottom, xr);
+  const distTop = topY !== null ? Math.abs(yr - topY) : Infinity;
+  const distBot = botY !== null ? Math.abs(yr - botY) : Infinity;
+  const targetLine = distTop <= distBot ? ctrlTop : ctrlBottom;
+
+  let insertIdx = targetLine.length;
+  for (let i = 0; i < targetLine.length; i++) {
+    if (targetLine[i].x > xr) { insertIdx = i; break; }
+  }
+  targetLine.splice(insertIdx, 0, { x: xr, y: yr });
+  draw();
+});
+
+// 右クリック
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const { x, y } = getMousePos(e);
+
+  if (e.shiftKey) {
+    // Shift+右クリック: 接線をリセット
+    const near = findNearest(x, y, true);
+    if (near) {
+      const pts = near.line === 'top' ? ctrlTop : ctrlBottom;
+      delete pts[near.index].tx;
+      delete pts[near.index].ty;
+      draw();
+    }
+  } else {
+    // 右クリック: 制御点を削除
+    const near = findNearest(x, y, false);
+    if (near && near.type === 'point') {
+      const pts = near.line === 'top' ? ctrlTop : ctrlBottom;
+      if (near.index > 0 && near.index < pts.length - 1) {
+        pts.splice(near.index, 1);
+        draw();
+      }
+    }
+  }
+});
+
+// ============================================================
+// エクスポート
+// ============================================================
+function exportPath() {
+  const round4 = v => Math.round(v * 10000) / 10000;
+  const mapPt = p => {
+    const out = { x: round4(p.x), y: round4(p.y) };
+    if (p.tx !== undefined) { out.tx = round4(p.tx); out.ty = round4(p.ty); }
+    return out;
+  };
+  const data = {
+    comment: "正解のねこの静的パス定義。Hermiteスプライン(Catmull-Rom + カスタム接線)で補間。座標はキャンバス比率(0-1)。",
+    topLine: ctrlTop.map(mapPt),
+    bottomLine: ctrlBottom.map(mapPt)
+  };
+  document.getElementById('export-data').value = JSON.stringify(data, null, 2);
+}
+
+// ============================================================
+// イベント
+// ============================================================
+document.getElementById('sl-tol-top').addEventListener('input', simplify);
+document.getElementById('sl-tol-bot').addEventListener('input', simplify);
+document.querySelectorAll('input[type=checkbox]').forEach(el => el.addEventListener('change', draw));
+
+// ============================================================
+// 初期化
+// ============================================================
+async function init() {
+  await loadImages();
+  extractContours();
+  simplify();
+}
+
+init();
+</script>
+</body>
+</html>
