@@ -127,7 +127,7 @@ function getTopY(xRatio, params, W, H) {
   const answer = CFG.answerParams;
   const base = splineY(catPath.topLine, xRatio) * H;
   const deltaEars = getEarContribution(xRatio, params, W) - getEarContribution(xRatio, answer, W);
-  const deltaTail = getTailContribution(xRatio, params, W, H) - getTailContribution(xRatio, answer, W, H);
+  const deltaTail = getTailContribution(xRatio, params) - getTailContribution(xRatio, answer, W, H);
   const fade = endpointFade(xRatio, catPath.topLine);
   return base - (deltaEars + deltaTail) * fade;
 }
@@ -139,7 +139,7 @@ function getBottomY(xRatio, params, W, H) {
   if (!catPath) return CFG.cat.noseY * H;
   const answer = CFG.answerParams;
   const base = splineY(catPath.bottomLine, xRatio) * H;
-  const deltaFeet = getFeetContribution(xRatio, params, W, H) - getFeetContribution(xRatio, answer, W, H);
+  const deltaFeet = getFeetContribution(xRatio, params) - getFeetContribution(xRatio, answer, W, H);
   const fade = endpointFade(xRatio, catPath.bottomLine);
   return base + deltaFeet * fade;
 }
@@ -252,7 +252,7 @@ function drawTargetImage(ctx, alpha) {
 // ============================================================
 function getEarContribution(xRatio, params, W) {
   const CAT = CFG.cat;
-  const SB = CFG.strokeBounds;
+  const Z = catPath.zones.ear;
   const ear1X = (CAT.earCenterX - params.earGap / W) * W;
   const ear2X = (CAT.earCenterX + params.earGap / W) * W;
   const x = xRatio * W;
@@ -260,36 +260,36 @@ function getEarContribution(xRatio, params, W) {
   const ear2 = params.earHeight * Math.exp(-((x - ear2X) ** 2) / (2 * params.earWidth ** 2));
   const span = CAT.tailX - CAT.noseX;
   const t = (xRatio - CAT.noseX) / span;
-  const earStartT = (SB.earZoneStartX - CAT.noseX) / span;
-  const earEndT = (SB.earZoneEndX - CAT.noseX) / span;
-  const fadeWidth = CFG.bottomLine.fadeWidth;
+  const earStartT = (Z.startX - CAT.noseX) / span;
+  const earEndT = (Z.endX - CAT.noseX) / span;
+  const fadeWidth = catPath.fadeWidth;
   const envLeft = Math.min(1, Math.max(0, (t - earStartT) / fadeWidth));
   const envRight = Math.min(1, Math.max(0, (earEndT - t) / fadeWidth));
   return (ear1 + ear2) * envLeft * envRight;
 }
 
-function getTailContribution(xRatio, params, W, H) {
+function getTailContribution(xRatio, params) {
   const CAT = CFG.cat;
   const t = (xRatio - CAT.noseX) / (CAT.tailX - CAT.noseX);
   if (t < 0 || t > 1) return 0;
-  const tailStart = (CFG.strokeBounds.tailTopStartX - CAT.noseX) / (CAT.tailX - CAT.noseX);
+  const tailStart = (catPath.zones.tail.startX - CAT.noseX) / (CAT.tailX - CAT.noseX);
   const tailT = Math.max(0, (t - tailStart) / (1 - tailStart));
   const smoothTail = tailT * tailT * (3 - 2 * tailT);
   return params.tailHeight * smoothTail;
 }
 
 
-function getFeetContribution(xRatio, params, W, H) {
+function getFeetContribution(xRatio, params) {
   const CAT = CFG.cat;
-  const BL = CFG.bottomLine;
-  const SB = CFG.strokeBounds;
+  const Z = catPath.zones.feet;
+  const fw = catPath.fadeWidth;
   const span = CAT.tailX - CAT.noseX;
   const t = (xRatio - CAT.noseX) / span;
   if (t < 0 || t > 1) return 0;
-  const feetStartT = (SB.feetStartX - CAT.noseX) / span - BL.fadeWidth;
-  const feetEndT = (SB.feetEndX - CAT.noseX) / span + BL.fadeWidth;
-  const feetEnvLeft = Math.min(1, Math.max(0, (t - feetStartT) / BL.fadeWidth));
-  const feetEnvRight = Math.min(1, Math.max(0, (feetEndT - t) / BL.fadeWidth));
+  const feetStartT = (Z.startX - CAT.noseX) / span - fw;
+  const feetEndT = (Z.endX - CAT.noseX) / span + fw;
+  const feetEnvLeft = Math.min(1, Math.max(0, (t - feetStartT) / fw));
+  const feetEnvRight = Math.min(1, Math.max(0, (feetEndT - t) / fw));
   const feetEnv = feetEnvLeft * feetEnvRight;
   const wave = params.feetAmp * Math.sin(params.feetFreq * Math.PI * 2 * t + params.feetPhase);
   return feetEnv * wave;
@@ -342,36 +342,6 @@ function renderGame() {
   drawCat(ctx, player, CFG.drawing.playerColor, CFG.drawing.playerLineWidth, 1.0);
 }
 
-function drawJunctionPoints(ctx, W, H) {
-  const SB = CFG.strokeBounds;
-  const SJ = CFG.strokeJunctions;
-  const CAT = CFG.cat;
-  const R = 4;
-  const points = [
-    { x: SB.earZoneStartX,   y: SJ.earZoneStart_topY,      label: 'earZoneStart_top' },
-    { x: SB.earZoneEndX,     y: SJ.earZoneEnd_topY,         label: 'earZoneEnd_top' },
-    { x: SB.tailTopStartX,   y: SJ.tailTopStart_topY,       label: 'tailTopStart_top' },
-    { x: SB.tailEndX,        y: SJ.tailTipY,            label: 'tailTip' },
-    { x: CAT.noseX,          y: SJ.noseY,               label: 'nose' },
-    { x: SB.faceBottomEndX,  y: SJ.faceBottomEnd_bottomY,   label: 'faceBottomEnd_bottom' },
-    { x: SB.feetStartX,      y: SJ.feetStart_bottomY,       label: 'feetStart_bottom' },
-    { x: SB.feetEndX,        y: SJ.feetEnd_bottomY,         label: 'feetEnd_bottom' },
-  ];
-  ctx.save();
-  ctx.font = '10px monospace';
-  for (const p of points) {
-    const px = p.x * W;
-    const py = p.y * H;
-    ctx.fillStyle = 'rgba(255, 0, 0, 0.85)';
-    ctx.beginPath();
-    ctx.arc(px, py, R, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255, 0, 0, 0.85)';
-    ctx.fillText(p.label, px + R + 2, py + 4);
-  }
-  ctx.restore();
-}
-
 function renderTitle() {
   const canvas = document.getElementById('title-canvas');
   const ctx = canvas.getContext('2d');
@@ -410,32 +380,25 @@ function calculateScore() {
 
   const W = CFG.canvas.width;
   const H = CFG.canvas.height;
-  const SB = CFG.strokeBounds;
   const SC = CFG.scoring;
   let totalError = 0;
   let count = 0;
 
-  // スライダー影響がある3ストロークの範囲（端点を除いた中間ピクセルのみ）
-  const scoredStrokes = [
-    // 耳（上の線）: earZoneStartX ～ earZoneEndX
-    { startX: SB.earZoneStartX, endX: SB.earZoneEndX, getY: (xr) => getTopY(xr, player, W, H), refY: (xr) => splineY(catPath.topLine, xr) * H },
-    // しっぽ（上の線）: tailTopStartX ～ tailEndX
-    { startX: SB.tailTopStartX, endX: SB.tailEndX, getY: (xr) => getTopY(xr, player, W, H), refY: (xr) => splineY(catPath.topLine, xr) * H },
-    // 足（下の線）: feetStartX ～ feetEndX
-    { startX: SB.feetStartX, endX: SB.feetEndX, getY: (xr) => getBottomY(xr, player, W, H), refY: (xr) => splineY(catPath.bottomLine, xr) * H },
+  // 上下の線それぞれ全範囲で採点
+  // （endpointFadeによりスライダー効果がない区間は自動的に誤差0）
+  const lines = [
+    { path: catPath.topLine,    getY: (xr) => getTopY(xr, player, W, H) },
+    { path: catPath.bottomLine, getY: (xr) => getBottomY(xr, player, W, H) },
   ];
 
-  for (const stroke of scoredStrokes) {
-    const sPx = Math.floor(stroke.startX * W);
-    const ePx = Math.ceil(stroke.endX * W);
+  for (const line of lines) {
+    const startPx = Math.floor(line.path[0].x * W);
+    const endPx = Math.ceil(line.path[line.path.length - 1].x * W);
 
-    for (let px = sPx; px <= ePx; px += SC.sampleStep) {
-      if (px <= sPx || px >= ePx) continue;
-
+    for (let px = startPx; px <= endPx; px += SC.sampleStep) {
       const xr = px / W;
-      const playerY = stroke.getY(xr);
-      const refY = stroke.refY(xr);
-
+      const playerY = line.getY(xr);
+      const refY = splineY(line.path, xr) * H;
       totalError += (refY - playerY) ** 2;
       count++;
     }
@@ -443,8 +406,7 @@ function calculateScore() {
 
   if (count === 0) return 0;
   const rmse = Math.sqrt(totalError / count);
-  const score = Math.max(0, Math.round(SC.maxScore * Math.max(0, 1 - rmse / SC.maxRmse)));
-  return score;
+  return Math.max(0, Math.round(SC.maxScore * Math.max(0, 1 - rmse / SC.maxRmse)));
 }
 
 function getScoreComment(score) {

@@ -177,5 +177,11 @@
       "x": 0.9504,
       "y": 0.1464
     }
-  ]
+  ],
+  "zones": {
+    "ear":  { "startX": 0.07, "endX": 0.305 },
+    "tail": { "startX": 0.88 },
+    "feet": { "startX": 0.2,  "endX": 0.91 }
+  },
+  "fadeWidth": 0.04
 }
