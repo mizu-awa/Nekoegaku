@@ -39,7 +39,7 @@
   },
   "drawing": {
     "playerColor": "#2c2c2c",
-    "playerLineWidth": 5,
+    "playerLineWidth": 13,
     "gridColor": "#eee",
     "gridLineWidth": 1,
     "gridSpacing": 40,

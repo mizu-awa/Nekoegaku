@@ -145,6 +145,67 @@ function getBottomY(xRatio, params, W, H) {
 }
 
 // ============================================================
+// 手書き風ノイズ
+// ============================================================
+// sin-hash → -1〜1 の擬似乱数（同じ入力には同じ値）
+function hash11(n) {
+  const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return (s - Math.floor(s)) * 2 - 1;
+}
+
+// 滑らかな補間ノイズ（value noise）
+function smoothNoise(x, scale) {
+  const sx = x / scale;
+  const i = Math.floor(sx);
+  const f = sx - i;
+  const t = f * f * (3 - 2 * f); // smoothstep
+  return hash11(i) * (1 - t) + hash11(i + 1) * t;
+}
+
+function handDrawnNoise(px, lineId) {
+  const seed = lineId * 10000;
+  // 長波長のゆるい揺れ + 短波長の細かいざらつき
+  return smoothNoise(px + seed, 80) * 2.0
+       + smoothNoise(px + seed, 30) * 1.5
+       + smoothNoise(px + seed, 10) * 1.1;
+}
+
+// ============================================================
+// 手書き風の線を描画（y方向うねり + 線幅ばらつき）
+// ============================================================
+function drawNoisyLine(ctx, linePoints, W, getY, lineId, baseLineWidth) {
+  const step = 5;
+  const startPx = Math.floor(linePoints[0].x * W);
+  const endPx = Math.ceil(linePoints[linePoints.length - 1].x * W);
+
+  // ポイントを間引きで生成（y方向うねり付き）
+  const pts = [];
+  for (let px = startPx; px <= endPx; px += step) {
+    const xr = px / W;
+    const fade = endpointFade(xr, linePoints);
+    const y = getY(xr) + handDrawnNoise(px, lineId) * fade;
+    const w = baseLineWidth + handDrawnNoise(px, lineId + 5) * fade * 1.1;
+    pts.push({ x: px, y, w });
+  }
+  if (pts[pts.length - 1].x !== endPx) {
+    const xr = endPx / W;
+    const fade = endpointFade(xr, linePoints);
+    const y = getY(xr) + handDrawnNoise(endPx, lineId) * fade;
+    const w = baseLineWidth + handDrawnNoise(endPx, lineId + 2) * fade * 2.0;
+    pts.push({ x: endPx, y, w });
+  }
+
+  // セグメントごとに線幅を変えて描画
+  for (let i = 0; i < pts.length - 1; i++) {
+    ctx.beginPath();
+    ctx.lineWidth = Math.max(10, (pts[i].w + pts[i + 1].w) / 2);
+    ctx.moveTo(pts[i].x, pts[i].y);
+    ctx.lineTo(pts[i + 1].x, pts[i + 1].y);
+    ctx.stroke();
+  }
+}
+
+// ============================================================
 // ねこを描画
 // ============================================================
 function drawCat(ctx, params, color, lineWidth, alpha) {
@@ -153,34 +214,15 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   const H = ctx.canvas.height;
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.lineWidth = lineWidth;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = color;
 
-  // 上の線（topLine 全体をスプライン＋スライダーdeltaで描画）
-  ctx.beginPath();
-  const topStart = Math.floor(catPath.topLine[0].x * W);
-  const topEnd = Math.ceil(catPath.topLine[catPath.topLine.length - 1].x * W);
-  for (let px = topStart; px <= topEnd; px++) {
-    const xr = px / W;
-    const y = getTopY(xr, params, W, H);
-    if (px === topStart) ctx.moveTo(px, y);
-    else ctx.lineTo(px, y);
-  }
-  ctx.stroke();
+  // 上の線
+  drawNoisyLine(ctx, catPath.topLine, W, (xr) => getTopY(xr, params, W, H), 0, lineWidth);
 
-  // 下の線（bottomLine 全体をスプライン＋スライダーdeltaで描画）
-  ctx.beginPath();
-  const btmStart = Math.floor(catPath.bottomLine[0].x * W);
-  const btmEnd = Math.ceil(catPath.bottomLine[catPath.bottomLine.length - 1].x * W);
-  for (let px = btmStart; px <= btmEnd; px++) {
-    const xr = px / W;
-    const y = getBottomY(xr, params, W, H);
-    if (px === btmStart) ctx.moveTo(px, y);
-    else ctx.lineTo(px, y);
-  }
-  ctx.stroke();
+  // 下の線
+  drawNoisyLine(ctx, catPath.bottomLine, W, (xr) => getBottomY(xr, params, W, H), 1, lineWidth);
 
   // 目（eye.png を head.png と同じ領域に重ねて描画）
   if (imagesLoaded) {
