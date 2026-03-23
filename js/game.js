@@ -106,6 +106,16 @@ function resetPlayer() {
   Object.assign(player, CFG.playerDefaults);
 }
 
+// 端点付近でスライダーdeltaをフェードアウト（始点・終点を固定）
+function endpointFade(xRatio, points) {
+  const startX = points[0].x;
+  const endX = points[points.length - 1].x;
+  const margin = 0.01;
+  const fadeIn = Math.min(1, Math.max(0, (xRatio - startX) / margin));
+  const fadeOut = Math.min(1, Math.max(0, (endX - xRatio) / margin));
+  return Math.min(fadeIn, fadeOut);
+}
+
 // ============================================================
 // 上の線のy座標を計算
 // ============================================================
@@ -115,7 +125,8 @@ function getTopY(xRatio, params, W, H) {
   const base = splineY(catPath.topLine, xRatio) * H;
   const deltaEars = getEarContribution(xRatio, params, W) - getEarContribution(xRatio, answer, W);
   const deltaTail = getTailContribution(xRatio, params, W, H) - getTailContribution(xRatio, answer, W, H);
-  return base - deltaEars - deltaTail;
+  const fade = endpointFade(xRatio, catPath.topLine);
+  return base - (deltaEars + deltaTail) * fade;
 }
 
 // ============================================================
@@ -126,16 +137,16 @@ function getBottomY(xRatio, params, W, H) {
   const answer = CFG.answerParams;
   const base = splineY(catPath.bottomLine, xRatio) * H;
   const deltaFeet = getFeetContribution(xRatio, params, W, H) - getFeetContribution(xRatio, answer, W, H);
-  return base + deltaFeet;
+  const fade = endpointFade(xRatio, catPath.bottomLine);
+  return base + deltaFeet * fade;
 }
 
 // ============================================================
 // ねこを描画
 // ============================================================
 function drawCat(ctx, params, color, lineWidth, alpha) {
+  if (!catPath) return;
   const CAT = CFG.cat;
-  const SB = CFG.strokeBounds;
-  const SC = CFG.strokeColors;
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
   ctx.save();
@@ -143,109 +154,29 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   ctx.lineWidth = lineWidth;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  ctx.strokeStyle = color;
 
-  const SJ = CFG.strokeJunctions;
-
-  // ストローク1: 顔（earZoneStartX → faceBottomEndX を3次ベジェ曲線1本で描画）
-  ctx.strokeStyle = SC.face;
+  // 上の線（topLine 全体をスプライン＋スライダーdeltaで描画）
   ctx.beginPath();
-  {
-    const x0 = SB.earZoneStartX * W;
-    const y0 = SJ.earZoneStart_topY * H;
-    const x3 = SB.faceBottomEndX * W;
-    const y3 = SJ.faceBottomEnd_bottomY * H;
-    const cp1x = x0 - 52;
-    const cp1y = y0 + 40;
-    const cp2x = x3 - 110;
-    const cp2y = y3 - 10;
-    ctx.moveTo(x0, y0);
-    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x3, y3);
-  }
-  ctx.stroke();
-
-  // ストローク2: 耳（earZoneStartX～earZoneEndX の上の線を1ストロークで描画）
-  ctx.strokeStyle = SC.ears;
-  ctx.beginPath();
-  for (let px = Math.floor(SB.earZoneStartX * W); px <= Math.ceil(SB.earZoneEndX * W); px++) {
+  const topStart = Math.floor(catPath.topLine[0].x * W);
+  const topEnd = Math.ceil(catPath.topLine[catPath.topLine.length - 1].x * W);
+  for (let px = topStart; px <= topEnd; px++) {
     const xr = px / W;
-    let y;
-    if (px === Math.floor(SB.earZoneStartX * W))  y = SJ.earZoneStart_topY * H;
-    else if (px === Math.ceil(SB.earZoneEndX * W)) y = SJ.earZoneEnd_topY * H;
-    else                                            y = getTopY(xr, params, W, H);
-    if (px === Math.floor(SB.earZoneStartX * W)) ctx.moveTo(px, y);
+    const y = getTopY(xr, params, W, H);
+    if (px === topStart) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
   ctx.stroke();
 
-  // ストローク3: 背中
-  ctx.strokeStyle = SC.back;
+  // 下の線（bottomLine 全体をスプライン＋スライダーdeltaで描画）
   ctx.beginPath();
-  {
-    const x0 = SB.earZoneEndX * W;
-    const y0 = SJ.earZoneEnd_topY * H;
-    const x1 = SB.tailTopStartX * W;
-    const y1 = SJ.tailTopStart_topY * H;
-    const cpx = (x0 + x1) / 2;
-    const cpy = Math.min(y0, y1) - 5;
-    ctx.moveTo(x0, y0);
-    ctx.quadraticCurveTo(cpx, cpy, x1, y1);
-  }
-  ctx.stroke();
-
-  // ストローク4: しっぽ（上の線 → 先端 → 下の線）
-  ctx.strokeStyle = SC.tail;
-  ctx.beginPath();
-  for (let px = Math.floor(SB.tailTopStartX * W); px <= Math.ceil(SB.tailEndX * W); px++) {
+  const btmStart = Math.floor(catPath.bottomLine[0].x * W);
+  const btmEnd = Math.ceil(catPath.bottomLine[catPath.bottomLine.length - 1].x * W);
+  for (let px = btmStart; px <= btmEnd; px++) {
     const xr = px / W;
-    let y;
-    if (px === Math.floor(SB.tailTopStartX * W))  y = SJ.tailTopStart_topY * H;
-    else if (px === Math.ceil(SB.tailEndX * W))    y = SJ.tailTipY * H;
-    else                                            y = getTopY(xr, params, W, H);
-    if (px === Math.floor(SB.tailTopStartX * W)) ctx.moveTo(px, y);
+    const y = getBottomY(xr, params, W, H);
+    if (px === btmStart) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
-  }
-  ctx.stroke();
-
-  // ストローク5: お尻
-  ctx.strokeStyle = SC.butt;
-  ctx.beginPath();
-  {
-    // 下の線: tailEnd → feetEnd
-    const x0 = SB.tailEndX * W;
-    const y0 = SJ.tailTipY * H;
-    const x1 = SB.feetEndX * W;
-    const y1 = getBottomY(SB.feetEndX, params, W, H);
-    const cpx = (x0 + x1) / 2 - 5;
-    const cpy = Math.min(y0, y1) + 10;
-    ctx.moveTo(x0, y0);
-    ctx.quadraticCurveTo(cpx, cpy, x1, y1);
-  }
-  ctx.stroke();
-
-  // ストローク6: 足
-  ctx.strokeStyle = SC.feet;
-  ctx.beginPath();
-  for (let px = Math.floor(SB.feetStartX * W); px <= Math.ceil(SB.feetEndX * W); px++) {
-    const xr = px / W;
-    let y;
-    y = getBottomY(xr, params, W, H);
-    if (px === Math.floor(SB.feetStartX * W)) ctx.moveTo(px, y);
-    else ctx.lineTo(px, y);
-  }
-  ctx.stroke();
-
-  // ストローク7: 足と顔をつなぐライン
-  ctx.strokeStyle = SC.connector;
-  ctx.beginPath();
-  {
-    const x0 = SB.faceBottomEndX * W;
-    const y0 = SJ.faceBottomEnd_bottomY * H;
-    const x1 = SB.feetStartX * W;
-    const y1 = getBottomY(SB.feetStartX, params, W, H);
-    const cpx = (x0 + x1) / 2;
-    const cpy = Math.max(y0, y1) - 10;
-    ctx.moveTo(x0, y0);
-    ctx.quadraticCurveTo(cpx, cpy, x1, y1);
   }
   ctx.stroke();
 
@@ -374,7 +305,6 @@ function renderGame() {
   drawGrid(ctx, canvas.width, canvas.height);
   drawTargetImage(ctx, CFG.drawing.targetAlphaGame);
   drawCat(ctx, player, CFG.drawing.playerColor, CFG.drawing.playerLineWidth, 1.0);
-  drawJunctionPoints(ctx, canvas.width, canvas.height);
 }
 
 function drawJunctionPoints(ctx, W, H) {
@@ -553,10 +483,8 @@ async function init() {
   applyLabels();
   applySliderRanges();
   setupSliderEvents();
-  // TODO: 開発中は直接ゲーム画面へ（あとで戻す）
-  // showScreen('title');
-  // renderTitle();
-  startGame();
+  showScreen('title');
+  renderTitle();
 }
 
 // デバッグ用: answerParamsのフィッティング

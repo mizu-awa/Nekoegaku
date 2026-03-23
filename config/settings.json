@@ -91,14 +91,5 @@
     "faceBottomEnd_bottomY":0.56,
     "feetStart_bottomY":    0.733,
     "feetEnd_bottomY":      0.67
-  },
-  "strokeColors": {
-    "face": "#e74c3c",
-    "ears": "#f39c12",
-    "back": "#2ecc71",
-    "tail": "#3498db",
-    "butt": "#9b59b6",
-    "feet": "#e91e63",
-    "connector": "#00bcd4"
   }
 }
