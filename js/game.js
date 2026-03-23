@@ -48,6 +48,7 @@ function applySliderRanges() {
 // ============================================================
 const headImg = new Image();
 const tailImg = new Image();
+const eyeImg = new Image();
 let imagesLoaded = false;
 
 let catPath = null;
@@ -55,11 +56,13 @@ let catPath = null;
 function loadImages() {
   return new Promise((resolve) => {
     let loaded = 0;
-    const onLoad = () => { if (++loaded === 2) resolve(); };
+    const onLoad = () => { if (++loaded === 3) resolve(); };
     headImg.src = 'img/head.png';
     tailImg.src = 'img/tail.png';
+    eyeImg.src = 'img/eye.png';
     headImg.onload = onLoad;
     tailImg.onload = onLoad;
+    eyeImg.onload = onLoad;
   });
 }
 
@@ -146,7 +149,6 @@ function getBottomY(xRatio, params, W, H) {
 // ============================================================
 function drawCat(ctx, params, color, lineWidth, alpha) {
   if (!catPath) return;
-  const CAT = CFG.cat;
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
   ctx.save();
@@ -180,19 +182,10 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
   }
   ctx.stroke();
 
-  // 目
-  ctx.fillStyle = color;
-  const eyeW = W * CFG.drawing.eyeWidthRatio;
-  const eyeH = H * CFG.drawing.eyeHeightRatio;
-  const eyeY = CAT.eyeY * H;
-
-  ctx.beginPath();
-  ctx.ellipse(CAT.eye1X * W, eyeY, eyeW, eyeH, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.ellipse(CAT.eye2X * W, eyeY, eyeW, eyeH, 0, 0, Math.PI * 2);
-  ctx.fill();
+  // 目（eye.png を head.png と同じ領域に重ねて描画）
+  if (imagesLoaded) {
+    ctx.drawImage(eyeImg, 0, 0, W / 2, H);
+  }
 
   ctx.restore();
 }
