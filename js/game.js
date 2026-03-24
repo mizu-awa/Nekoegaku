@@ -130,7 +130,7 @@ function getTopY(xRatio, params, W, H) {
   const deltaTail = getTailContribution(xRatio, params) - getTailContribution(xRatio, answer, W, H);
   const deltaBody = params.bodyHeight - answer.bodyHeight;
   const fade = endpointFade(xRatio, catPath.topLine);
-  return base - (deltaEars + deltaTail) * fade - deltaBody * fade;
+  return base - (deltaEars + deltaTail) * fade - deltaBody;
 }
 
 // ============================================================
@@ -143,7 +143,7 @@ function getBottomY(xRatio, params, W, H) {
   const deltaFeet = getFeetContribution(xRatio, params) - getFeetContribution(xRatio, answer, W, H);
   const deltaBody = params.bodyHeight - answer.bodyHeight;
   const fade = endpointFade(xRatio, catPath.bottomLine);
-  return base + deltaFeet * fade - deltaBody * fade;
+  return base + deltaFeet * fade - deltaBody;
 }
 
 // ============================================================
