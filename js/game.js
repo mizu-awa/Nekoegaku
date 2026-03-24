@@ -35,11 +35,16 @@ function applyLabels() {
 }
 
 function applySliderRanges() {
+  const hidden = CFG.hiddenSliders || [];
   for (const [key, range] of Object.entries(CFG.sliders)) {
     const el = document.getElementById(`sl-${key}`);
     el.min = range.min;
     el.max = range.max;
     el.step = range.step;
+    // 非表示スライダーはDOM要素ごと隠す
+    if (hidden.includes(key)) {
+      el.closest('.slider-group').style.display = 'none';
+    }
   }
 }
 
@@ -107,6 +112,10 @@ const player = {};
 
 function resetPlayer() {
   Object.assign(player, CFG.playerDefaults);
+  // 非表示スライダーは正解値で固定
+  for (const key of (CFG.hiddenSliders || [])) {
+    player[key] = CFG.answerParams[key];
+  }
 }
 
 // 端点付近でスライダーdeltaをフェードアウト（始点・終点を固定）
@@ -306,13 +315,28 @@ function buildFormulaDisplay() {
   const el = document.getElementById('formula-display');
   const S = LANG.sliders;
   const L = LANG.formulaLabels;
+  const hidden = CFG.hiddenSliders || [];
 
-  const formulas = [
-    { label: L.ear,    text: `${S.earHeight}·exp(−(x−${S.earGap})²/(2·${S.earWidth}²)) + ${S.earHeight}·exp(−(x+${S.earGap})²/(2·${S.earWidth}²))` },
-    { label: L.tail,   text: `${S.tailHeight}·t^${S.tailCurl}²(3 − 2t^${S.tailCurl})` },
-    { label: L.feet,   text: `${S.feetAmp}·sin(${S.feetFreq}·2π·t + ${S.feetPhase})` },
-    { label: L.offset, text: `y += ${S.bodyHeight}` },
+  // 非表示スライダーに関連する数式行を除外
+  const formulaKeyMap = {
+    ear:    ['earHeight', 'earGap', 'earWidth'],
+    tail:   ['tailHeight', 'tailCurl'],
+    feet:   ['feetAmp', 'feetFreq', 'feetPhase'],
+    offset: ['bodyHeight'],
+  };
+
+  const allFormulas = [
+    { id: 'ear',    label: L.ear,    text: `${S.earHeight}·exp(−(x−${S.earGap})²/(2·${S.earWidth}²)) + ${S.earHeight}·exp(−(x+${S.earGap})²/(2·${S.earWidth}²))` },
+    { id: 'tail',   label: L.tail,   text: `${S.tailHeight}·t^${S.tailCurl}²(3 − 2t^${S.tailCurl})` },
+    { id: 'feet',   label: L.feet,   text: `${S.feetAmp}·sin(${S.feetFreq}·2π·t + ${S.feetPhase})` },
+    { id: 'offset', label: L.offset, text: `y += ${S.bodyHeight}` },
   ];
+
+  // 数式行の全パラメータが非表示なら行ごと除外
+  const formulas = allFormulas.filter(f => {
+    const keys = formulaKeyMap[f.id];
+    return !keys.every(k => hidden.includes(k));
+  });
 
   el.innerHTML = formulas.map(f =>
     `<div class="formula-row"><span class="formula-label">${f.label}:</span>${f.text}</div>`

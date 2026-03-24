@@ -4,7 +4,7 @@
     "height": 400
   },
   "timer": {
-    "duration": 30.0,
+    "duration": 40.0,
     "intervalMs": 100,
     "warningThreshold": 10
   },
@@ -30,11 +30,11 @@
     "earGap": 15,
     "earWidth": 40,
     "tailHeight": 30,
-    "tailCurl": 1.8,
+    "tailCurl": 1.0,
     "feetAmp": 20,
     "feetFreq": 7.0,
     "feetPhase": -1.5,
-    "bodyHeight": -20
+    "bodyHeight": 0
   },
   "drawing": {
     "playerColor": "#2c2c2c",
@@ -47,10 +47,11 @@
     "targetAlphaResult": 0
   },
   "scoring": {
-    "maxRmse": 41,
+    "maxRmse": 35,
     "maxScore": 100,
     "sampleStep": 2
   },
+  "hiddenSliders": ["tailCurl", "bodyHeight"],
   "sliders": {
     "earHeight":  { "min": 10,    "max": 150,  "step": 1 },
     "earWidth":   { "min": 8,     "max": 60,   "step": 1 },
