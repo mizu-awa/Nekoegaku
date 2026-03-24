@@ -309,7 +309,7 @@ function buildFormulaDisplay() {
 
   const formulas = [
     { label: L.ear,    text: `${S.earHeight}·exp(−(x−${S.earGap})²/(2·${S.earWidth}²)) + ${S.earHeight}·exp(−(x+${S.earGap})²/(2·${S.earWidth}²))` },
-    { label: L.tail,   text: `${S.tailHeight}·smoothstep(t ^ ${S.tailCurl})` },
+    { label: L.tail,   text: `${S.tailHeight}·t^${S.tailCurl}²(3 − 2t^${S.tailCurl})` },
     { label: L.feet,   text: `${S.feetAmp}·sin(${S.feetFreq}·2π·t + ${S.feetPhase})` },
     { label: L.offset, text: `y += ${S.bodyHeight}` },
   ];
