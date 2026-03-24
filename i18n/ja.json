@@ -1,20 +1,20 @@
 {
   "title": "ねこえがく",
-  "subtitle": "数式をいじって、ねこを描こう！",
+  "subtitle": "数式をいじって、ねこを描こう",
   "startButton": "はじめる",
   "timerFormat": "⏱ {time}秒",
-  "finishButton": "できた！",
+  "finishButton": "できた",
   "resultHeader": "けっか",
   "scoreUnit": "点",
   "retryButton": "もういちど",
   "sliders": {
     "earHeight": "🔺",
     "earWidth": "✦",
-    "earGap": "↔",
+    "earGap": "🏔",
     "tailHeight": "⤴",
     "tailCurl": "🌀",
     "feetAmp": "〰",
-    "feetFreq": "🦶",
+    "feetFreq": "🌊",
     "feetPhase": "↻",
     "bodyHeight": "↕"
   },
@@ -25,11 +25,11 @@
     "offset": "上下"
   },
   "scoreComments": [
-    { "min": 85, "text": "すごすぎ！天才ねこ絵師！🐱✨" },
-    { "min": 70, "text": "すごい！にゃかなかやるね！" },
-    { "min": 50, "text": "いい感じ！もうちょっと！" },
-    { "min": 30, "text": "ねこ…かな？" },
-    { "min": 15, "text": "なにか別の生き物かも…" },
-    { "min": 0,  "text": "これは…数学の勉強から始めよう" }
+    { "min": 85, "text": "かんぺき" },
+    { "min": 70, "text": "よい" },
+    { "min": 50, "text": "まあまあ" },
+    { "min": 30, "text": "ねこなのか？" },
+    { "min": 15, "text": "もうすこしがんばりましょう" },
+    { "min": 0,  "text": "現代アート" }
   ]
 }

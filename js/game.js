@@ -210,10 +210,10 @@ function drawNoisyLine(ctx, linePoints, W, getY, lineId, baseLineWidth) {
 // ============================================================
 // ねこを描画
 // ============================================================
-function drawCat(ctx, params, color, lineWidth, alpha) {
+function drawCat(ctx, params, color, lineWidth, alpha, logicalW, logicalH) {
   if (!catPath) return;
-  const W = ctx.canvas.width;
-  const H = ctx.canvas.height;
+  const W = logicalW ?? ctx.canvas.width;
+  const H = logicalH ?? ctx.canvas.height;
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.lineCap = 'round';
@@ -237,10 +237,10 @@ function drawCat(ctx, params, color, lineWidth, alpha) {
 // ============================================================
 // 正解画像の描画
 // ============================================================
-function drawTargetImage(ctx, alpha) {
+function drawTargetImage(ctx, alpha, logicalW, logicalH) {
   if (!imagesLoaded) return;
-  const W = ctx.canvas.width;
-  const H = ctx.canvas.height;
+  const W = logicalW ?? ctx.canvas.width;
+  const H = logicalH ?? ctx.canvas.height;
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.drawImage(headImg, 0, 0, W / 2, H);
@@ -375,10 +375,39 @@ function renderTitle() {
 function renderResult() {
   const canvas = document.getElementById('result-canvas');
   const ctx = canvas.getContext('2d');
+  const W = CFG.canvas.width;
+  const H = CFG.canvas.height;
+
+  // プレイヤー波形のy範囲を事前サンプリング
+  let yMin = 0, yMax = H;
+  if (catPath) {
+    const lines = [
+      { path: catPath.topLine,    getY: (xr) => getTopY(xr, player, W, H) },
+      { path: catPath.bottomLine, getY: (xr) => getBottomY(xr, player, W, H) },
+    ];
+    for (const line of lines) {
+      const startPx = Math.floor(line.path[0].x * W);
+      const endPx   = Math.ceil(line.path[line.path.length - 1].x * W);
+      for (let px = startPx; px <= endPx; px += 4) {
+        const y = line.getY(px / W);
+        if (y < yMin) yMin = y;
+        if (y > yMax) yMax = y;
+      }
+    }
+  }
+
+  const margin = 16;
+  const padTop    = Math.ceil(Math.max(0, -yMin) + margin);
+  const padBottom = Math.ceil(Math.max(0, yMax - H) + margin);
+
+  canvas.width  = W;
+  canvas.height = H + padTop + padBottom;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawGrid(ctx, canvas.width, canvas.height);
-  drawTargetImage(ctx, CFG.drawing.targetAlphaResult);
-  drawCat(ctx, player, CFG.drawing.playerColor, CFG.drawing.playerLineWidth, 1.0);
+  ctx.save();
+  ctx.translate(0, padTop);
+  drawTargetImage(ctx, CFG.drawing.targetAlphaResult, W, H);
+  drawCat(ctx, player, CFG.drawing.playerColor, CFG.drawing.playerLineWidth, 1.0, W, H);
+  ctx.restore();
 }
 
 function drawGrid(ctx, W, H) {

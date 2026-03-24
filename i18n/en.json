@@ -10,11 +10,11 @@
   "sliders": {
     "earHeight": "🔺",
     "earWidth": "✦",
-    "earGap": "↔",
+    "earGap": "🏔",
     "tailHeight": "⤴",
     "tailCurl": "🌀",
     "feetAmp": "〰",
-    "feetFreq": "🦶",
+    "feetFreq": "🌊",
     "feetPhase": "↻",
     "bodyHeight": "↕"
   },
@@ -25,11 +25,11 @@
     "offset": "Y-offset"
   },
   "scoreComments": [
-    { "min": 85, "text": "Amazing! You're a genius cat artist! 🐱✨" },
-    { "min": 70, "text": "Great! You're pretty good!" },
-    { "min": 50, "text": "Nice! Almost there!" },
-    { "min": 30, "text": "Is that... a cat?" },
-    { "min": 15, "text": "Might be some other creature..." },
-    { "min": 0,  "text": "Maybe start with some math practice..." }
+    { "min": 85, "text": "Perfect!" },
+    { "min": 70, "text": "Good!" },
+    { "min": 50, "text": "So-so" },
+    { "min": 30, "text": "Is this even a cat?" },
+    { "min": 15, "text": "Keep trying a little more!" },
+    { "min": 0,  "text": "Modern Art" }
   ]
 }
