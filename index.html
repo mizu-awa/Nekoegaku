@@ -294,6 +294,44 @@ canvas {
   }
 }
 
+/* スマホ縦画面: スライダーをコンパクトに */
+@media (max-aspect-ratio: 1/1) and (max-width: 540px) {
+  .sliders {
+    gap: 0.3em 0.8em;
+  }
+
+  .slider-group {
+    padding: 0.4em 0.6em;
+    gap: 0.3em;
+  }
+
+  .slider-group label {
+    font-size: 1.1rem;
+    min-width: 1.4em;
+  }
+}
+
+/* 非常に狭い画面: 1列にしつつコンパクト */
+@media (max-aspect-ratio: 1/1) and (max-width: 380px) {
+  .sliders {
+    grid-template-columns: 1fr;
+    gap: 0.25em;
+  }
+
+  .sliders > .slider-group:last-child:nth-child(odd) {
+    width: 100%;
+  }
+
+  .slider-group {
+    padding: 0.3em 0.6em;
+  }
+
+  .slider-group label {
+    font-size: 1rem;
+    min-width: 1.2em;
+  }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
