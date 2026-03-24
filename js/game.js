@@ -325,11 +325,14 @@ function buildFormulaDisplay() {
     offset: ['bodyHeight'],
   };
 
+  // 非表示パラメータはアイコンの代わりに固定値を表示
+  const v = (key) => hidden.includes(key) ? CFG.answerParams[key] : S[key];
+
   const allFormulas = [
-    { id: 'ear',    label: L.ear,    text: `${S.earHeight}·exp(−(x−${S.earGap})²/(2·${S.earWidth}²)) + ${S.earHeight}·exp(−(x+${S.earGap})²/(2·${S.earWidth}²))` },
-    { id: 'tail',   label: L.tail,   text: `${S.tailHeight}·t^${S.tailCurl}²(3 − 2t^${S.tailCurl})` },
-    { id: 'feet',   label: L.feet,   text: `${S.feetAmp}·sin(${S.feetFreq}·2π·t + ${S.feetPhase})` },
-    { id: 'offset', label: L.offset, text: `y += ${S.bodyHeight}` },
+    { id: 'ear',    label: L.ear,    text: `${v('earHeight')}·exp(−(x−${v('earGap')})²/(2·${v('earWidth')}²)) + ${v('earHeight')}·exp(−(x+${v('earGap')})²/(2·${v('earWidth')}²))` },
+    { id: 'tail',   label: L.tail,   text: `${v('tailHeight')}·t^${v('tailCurl')}²(3 − 2t^${v('tailCurl')})` },
+    { id: 'feet',   label: L.feet,   text: `${v('feetAmp')}·sin(${v('feetFreq')}·2π·t + ${v('feetPhase')})` },
+    { id: 'offset', label: L.offset, text: `y += ${v('bodyHeight')}` },
   ];
 
   // 数式行の全パラメータが非表示なら行ごと除外
