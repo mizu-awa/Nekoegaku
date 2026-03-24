@@ -152,6 +152,30 @@ canvas {
   height: 6px;
 }
 
+#formula-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3em 1.5em;
+  padding: 0.5em 0.8em 0.2em;
+  font-size: 0.85rem;
+  color: #999;
+  line-height: 1.6;
+}
+
+#formula-display .formula-row {
+  white-space: nowrap;
+}
+
+#formula-display .formula-label {
+  font-weight: 700;
+  color: #bbb;
+  margin-right: 0.3em;
+}
+
+#formula-display .formula-symbol {
+  font-size: 1.05em;
+}
+
 .game-footer {
   text-align: center;
   margin-top: 0.8em;
@@ -291,6 +315,7 @@ canvas {
     <div class="game-body">
     <div class="canvas-wrap">
       <canvas id="game-canvas" width="800" height="400"></canvas>
+      <div id="formula-display"></div>
     </div>
     <div class="game-side">
     <div class="sliders">

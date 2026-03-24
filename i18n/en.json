@@ -18,6 +18,12 @@
     "feetPhase": "↻",
     "bodyHeight": "↕"
   },
+  "formulaLabels": {
+    "ear": "Ear",
+    "tail": "Tail",
+    "feet": "Feet",
+    "offset": "Y-offset"
+  },
   "scoreComments": [
     { "min": 85, "text": "Amazing! You're a genius cat artist! 🐱✨" },
     { "min": 70, "text": "Great! You're pretty good!" },

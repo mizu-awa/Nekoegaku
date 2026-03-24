@@ -18,6 +18,12 @@
     "feetPhase": "↻",
     "bodyHeight": "↕"
   },
+  "formulaLabels": {
+    "ear": "耳",
+    "tail": "しっぽ",
+    "feet": "足",
+    "offset": "上下"
+  },
   "scoreComments": [
     { "min": 85, "text": "すごすぎ！天才ねこ絵師！🐱✨" },
     { "min": 70, "text": "すごい！にゃかなかやるね！" },
