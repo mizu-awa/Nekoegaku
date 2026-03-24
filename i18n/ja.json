@@ -8,13 +8,15 @@
   "scoreUnit": "点",
   "retryButton": "もういちど",
   "sliders": {
-    "earHeight": "🔺 耳の高さ",
-    "earGap": "↔ 耳の間隔",
-    "earWidth": "✦ 耳のとがり",
-    "tailHeight": "⤴ しっぽ",
-    "feetAmp": "〰 足の長さ",
-    "feetFreq": "🦶 足の本数",
-    "feetPhase": "⇄ 足の位置"
+    "earHeight": "🔺",
+    "earWidth": "✦",
+    "earGap": "↔",
+    "tailHeight": "⤴",
+    "tailCurl": "🌀",
+    "feetAmp": "〰",
+    "feetFreq": "🦶",
+    "feetPhase": "↻",
+    "bodyHeight": "↕"
   },
   "scoreComments": [
     { "min": 85, "text": "すごすぎ！天才ねこ絵師！🐱✨" },

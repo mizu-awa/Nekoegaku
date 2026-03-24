@@ -19,18 +19,22 @@
     "earGap": 30,
     "earWidth": 20,
     "tailHeight": 80,
+    "tailCurl": 1.0,
     "feetAmp": 40,
     "feetFreq": 4.5,
-    "feetPhase": 0.0
+    "feetPhase": 0,
+    "bodyHeight": 0
   },
   "playerDefaults": {
-    "earHeight": 50,
-    "earGap": 30,
+    "earHeight": 130,
+    "earGap": 15,
     "earWidth": 40,
     "tailHeight": 30,
+    "tailCurl": 1.8,
     "feetAmp": 20,
-    "feetFreq": 2.5,
-    "feetPhase": 0.8
+    "feetFreq": 7.0,
+    "feetPhase": -1.5,
+    "bodyHeight": -20
   },
   "drawing": {
     "playerColor": "#2c2c2c",
@@ -40,20 +44,22 @@
     "gridSpacing": 40,
     "targetAlphaTitle": 0.6,
     "targetAlphaGame": 0.18,
-    "targetAlphaResult": 0.35
+    "targetAlphaResult": 0
   },
   "scoring": {
-    "maxRmse": 80,
+    "maxRmse": 41,
     "maxScore": 100,
     "sampleStep": 2
   },
   "sliders": {
     "earHeight":  { "min": 10,    "max": 150,  "step": 1 },
-    "earGap":     { "min": 10,    "max": 80,   "step": 1 },
     "earWidth":   { "min": 8,     "max": 60,   "step": 1 },
     "tailHeight": { "min": 0,     "max": 150,  "step": 1 },
     "feetAmp":    { "min": 5,     "max": 80,   "step": 1 },
-    "feetFreq":   { "min": 1,     "max": 14,   "step": 0.1 },
-    "feetPhase":  { "min": -3.14, "max": 3.14, "step": 0.05 }
+    "feetFreq":   { "min": 1,     "max": 9,    "step": 0.1 },
+    "earGap":     { "min": 5,     "max": 60,   "step": 1 },
+    "tailCurl":   { "min": 0.3,   "max": 2.5,  "step": 0.1 },
+    "feetPhase":  { "min": -3.1,  "max": 3.1,  "step": 0.1 },
+    "bodyHeight": { "min": -50,   "max": 50,   "step": 1 }
   }
 }

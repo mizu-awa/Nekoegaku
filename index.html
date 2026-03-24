@@ -133,10 +133,17 @@ canvas {
 }
 
 .slider-group label {
-  font-size: 0.9rem;
+  font-size: 1.4rem;
   font-weight: 700;
-  min-width: 6em;
+  min-width: 1.8em;
+  text-align: center;
   color: #555;
+}
+
+.sliders > .slider-group:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+  width: calc(50% - 0.75em);
+  margin: 0 auto;
 }
 
 .slider-group input[type="range"] {
@@ -201,6 +208,62 @@ canvas {
   gap: 1em;
 }
 
+/* 横長画面: ゲーム画面のみキャンバスとスライダーを横並び */
+@media (min-aspect-ratio: 1/1) {
+  #app {
+    width: 95vw;
+    max-width: 1400px;
+  }
+
+  #title-screen,
+  #result-screen {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .game-body {
+    display: flex;
+    gap: 1em;
+    align-items: center;
+  }
+
+  .canvas-wrap {
+    flex: 1;
+    min-width: 0;
+    margin-bottom: 0;
+  }
+
+  .game-side {
+    width: 320px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6em;
+  }
+
+  .sliders {
+    grid-template-columns: 1fr;
+    gap: 0.5em;
+  }
+
+  .sliders > .slider-group:last-child:nth-child(odd) {
+    width: 100%;
+  }
+
+  .slider-group {
+    padding: 0.35em 0.7em;
+  }
+
+  .slider-group label {
+    font-size: 1.1rem;
+    min-width: 1.4em;
+  }
+
+  .game-footer {
+    margin-top: 0.4em;
+  }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -225,25 +288,31 @@ canvas {
       <h2 id="game-heading"></h2>
       <div class="timer" id="timer"></div>
     </div>
+    <div class="game-body">
     <div class="canvas-wrap">
       <canvas id="game-canvas" width="800" height="400"></canvas>
     </div>
+    <div class="game-side">
     <div class="sliders">
       <div class="slider-group">
         <label id="label-earHeight"></label>
         <input type="range" id="sl-earHeight">
       </div>
       <div class="slider-group">
-        <label id="label-earGap"></label>
-        <input type="range" id="sl-earGap">
-      </div>
-      <div class="slider-group">
         <label id="label-earWidth"></label>
         <input type="range" id="sl-earWidth">
       </div>
       <div class="slider-group">
+        <label id="label-earGap"></label>
+        <input type="range" id="sl-earGap">
+      </div>
+      <div class="slider-group">
         <label id="label-tailHeight"></label>
         <input type="range" id="sl-tailHeight">
+      </div>
+      <div class="slider-group">
+        <label id="label-tailCurl"></label>
+        <input type="range" id="sl-tailCurl">
       </div>
       <div class="slider-group">
         <label id="label-feetAmp"></label>
@@ -257,10 +326,16 @@ canvas {
         <label id="label-feetPhase"></label>
         <input type="range" id="sl-feetPhase">
       </div>
+      <div class="slider-group">
+        <label id="label-bodyHeight"></label>
+        <input type="range" id="sl-bodyHeight">
+      </div>
     </div>
     <div class="game-footer">
       <button class="btn btn-primary" id="finish-btn" onclick="finishGame()"></button>
     </div>
+    </div><!-- .game-side -->
+    </div><!-- .game-body -->
   </div>
 
   <!-- 結果画面 -->

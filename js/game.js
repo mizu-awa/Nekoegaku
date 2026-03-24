@@ -28,7 +28,7 @@ function applyLabels() {
   document.title = LANG.title;
 
   // スライダーラベル
-  const sliderKeys = ['earHeight', 'earGap', 'earWidth', 'tailHeight', 'feetAmp', 'feetFreq', 'feetPhase'];
+  const sliderKeys = ['earHeight', 'earWidth', 'earGap', 'tailHeight', 'tailCurl', 'feetAmp', 'feetFreq', 'feetPhase', 'bodyHeight'];
   for (const key of sliderKeys) {
     document.getElementById(`label-${key}`).textContent = LANG.sliders[key];
   }
@@ -128,8 +128,9 @@ function getTopY(xRatio, params, W, H) {
   const base = splineY(catPath.topLine, xRatio) * H;
   const deltaEars = getEarContribution(xRatio, params, W) - getEarContribution(xRatio, answer, W);
   const deltaTail = getTailContribution(xRatio, params) - getTailContribution(xRatio, answer, W, H);
+  const deltaBody = params.bodyHeight - answer.bodyHeight;
   const fade = endpointFade(xRatio, catPath.topLine);
-  return base - (deltaEars + deltaTail) * fade;
+  return base - (deltaEars + deltaTail) * fade - deltaBody * fade;
 }
 
 // ============================================================
@@ -140,8 +141,9 @@ function getBottomY(xRatio, params, W, H) {
   const answer = CFG.answerParams;
   const base = splineY(catPath.bottomLine, xRatio) * H;
   const deltaFeet = getFeetContribution(xRatio, params) - getFeetContribution(xRatio, answer, W, H);
+  const deltaBody = params.bodyHeight - answer.bodyHeight;
   const fade = endpointFade(xRatio, catPath.bottomLine);
-  return base + deltaFeet * fade;
+  return base + deltaFeet * fade - deltaBody * fade;
 }
 
 // ============================================================
@@ -274,7 +276,8 @@ function getTailContribution(xRatio, params) {
   if (t < 0 || t > 1) return 0;
   const tailStart = (catPath.zones.tail.startX - CAT.noseX) / (CAT.tailX - CAT.noseX);
   const tailT = Math.max(0, (t - tailStart) / (1 - tailStart));
-  const smoothTail = tailT * tailT * (3 - 2 * tailT);
+  const curvedT = Math.pow(tailT, params.tailCurl);
+  const smoothTail = curvedT * curvedT * (3 - 2 * curvedT);
   return params.tailHeight * smoothTail;
 }
 
@@ -306,7 +309,7 @@ let timerInterval = null;
 // ============================================================
 // スライダー ↔ プレイヤーパラメータの同期
 // ============================================================
-const sliderKeys = ['earHeight', 'earGap', 'earWidth', 'tailHeight', 'feetAmp', 'feetFreq', 'feetPhase'];
+const sliderKeys = ['earHeight', 'earWidth', 'earGap', 'tailHeight', 'tailCurl', 'feetAmp', 'feetFreq', 'feetPhase', 'bodyHeight'];
 
 function syncSlidersFromPlayer() {
   for (const key of sliderKeys) {

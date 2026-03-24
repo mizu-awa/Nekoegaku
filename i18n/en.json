@@ -8,13 +8,15 @@
   "scoreUnit": "pts",
   "retryButton": "Try Again",
   "sliders": {
-    "earHeight": "🔺 Ear Height",
-    "earGap": "↔ Ear Gap",
-    "earWidth": "✦ Ear Sharpness",
-    "tailHeight": "⤴ Tail",
-    "feetAmp": "〰 Leg Length",
-    "feetFreq": "🦶 Leg Count",
-    "feetPhase": "⇄ Leg Position"
+    "earHeight": "🔺",
+    "earWidth": "✦",
+    "earGap": "↔",
+    "tailHeight": "⤴",
+    "tailCurl": "🌀",
+    "feetAmp": "〰",
+    "feetFreq": "🦶",
+    "feetPhase": "↻",
+    "bodyHeight": "↕"
   },
   "scoreComments": [
     { "min": 85, "text": "Amazing! You're a genius cat artist! 🐱✨" },
