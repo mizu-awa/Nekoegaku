@@ -74,10 +74,7 @@ def extract_text_content(content) -> str:
             elif btype == "tool_use":
                 name = block.get("name", "tool")
                 inp = block.get("input", {})
-                # ファイルパスや短いコマンドだけ表示（長い場合は省略）
-                inp_str = json.dumps(inp, ensure_ascii=False)
-                if len(inp_str) > 300:
-                    inp_str = inp_str[:300] + "... (省略)"
+                inp_str = json.dumps(inp, ensure_ascii=False, indent=2)
                 parts.append(f"*🔧 ツール実行: `{name}`*\n```\n{inp_str}\n```")
             elif btype == "tool_result":
                 result = block.get("content", "")
@@ -86,10 +83,7 @@ def extract_text_content(content) -> str:
                         b.get("text", "") for b in result if isinstance(b, dict)
                     )
                 if isinstance(result, str) and result.strip():
-                    preview = result.strip()
-                    if len(preview) > 200:
-                        preview = preview[:200] + "... (省略)"
-                    parts.append(f"*📤 結果:*\n```\n{preview}\n```")
+                    parts.append(f"*📤 結果:*\n```\n{result.strip()}\n```")
         return "\n\n".join(parts)
     return ""
 
