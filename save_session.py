@@ -42,11 +42,30 @@ def find_transcripts_dir() -> Path:
 
 
 def find_all_jsonl(projects_dir: Path) -> list[Path]:
-    """全JONLファイルを更新日時の新しい順で返す"""
-    files = list(projects_dir.rglob("*.jsonl"))
+    """メインセッションのJONLファイルを更新日時の新しい順で返す（subagents/を除外）"""
+    files = list(projects_dir.glob("*/*.jsonl"))
     files = [f for f in files if f.stat().st_size > 100]  # 空ファイルを除外
     files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
     return files
+
+
+def find_subagent_files(jsonl_path: Path) -> list[tuple[Path, dict]]:
+    """メインセッションに紐づくサブエージェントのJSONLとメタデータを返す"""
+    session_id = jsonl_path.stem  # ファイル名 = セッションID
+    subagents_dir = jsonl_path.parent / session_id / "subagents"
+    if not subagents_dir.exists():
+        return []
+    results = []
+    for meta_path in sorted(subagents_dir.glob("*.meta.json")):
+        agent_name = meta_path.stem.replace(".meta", "")  # agent-xxx
+        agent_jsonl = subagents_dir / f"{agent_name}.jsonl"
+        if agent_jsonl.exists() and agent_jsonl.stat().st_size > 100:
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                meta = {}
+            results.append((agent_jsonl, meta))
+    return results
 
 
 def find_latest_jsonl(projects_dir: Path) -> Path | None:
@@ -124,8 +143,18 @@ def convert_to_markdown(jsonl_path: Path, output_path: Path | None = None) -> Pa
     start_time = min(timestamps) if timestamps else ""
     end_time = max(timestamps) if timestamps else ""
 
-    # トークン集計
+    # サブエージェントの検出
+    subagent_files = find_subagent_files(jsonl_path)
+
+    # トークン集計（メイン）
     tokens = calc_token_totals(entries)
+    # サブエージェントのトークンを合算
+    for sa_path, _meta in subagent_files:
+        sa_entries = load_jsonl(sa_path)
+        sa_tokens = calc_token_totals(sa_entries)
+        for key in tokens:
+            tokens[key] += sa_tokens[key]
+
     total_input = tokens["input_tokens"]
     total_output = tokens["output_tokens"]
     total_cache_create = tokens["cache_creation_input_tokens"]
@@ -228,9 +257,60 @@ def convert_to_markdown(jsonl_path: Path, output_path: Path | None = None) -> Pa
 
     # メッセージ数をヘッダーに追記
     lines.insert(10, f"| メッセージ数 | {msg_count} |")
+    if subagent_files:
+        lines.insert(11, f"| サブエージェント数 | {len(subagent_files)} |")
 
     md_content = "\n".join(lines)
     output_path.write_text(md_content, encoding="utf-8")
+
+    # サブエージェントの会話ログを別ファイルとして保存
+    if subagent_files:
+        sa_dir = output_path.parent / "subagent"
+        sa_dir.mkdir(parents=True, exist_ok=True)
+        # メインのファイル名からプレフィックスを取得（session-YYYYMMDD-HHMMSS-shortid）
+        main_stem = output_path.stem  # e.g. session-20260325-013744-2ecce541
+        for sa_path, meta in subagent_files:
+            sa_entries = load_jsonl(sa_path)
+            if not sa_entries:
+                continue
+            agent_type = meta.get("agentType", "unknown")
+            agent_desc = meta.get("description", "")
+            agent_name = sa_path.stem  # e.g. agent-a1d8d3e1da88b0366
+            sa_tokens = calc_token_totals(sa_entries)
+            sa_grand = sum(sa_tokens.values())
+
+            sa_lines = [
+                f"# サブエージェントログ: {agent_type}",
+                "",
+                "## 情報",
+                "",
+                "| 項目 | 値 |",
+                "|------|-----|",
+                f"| エージェント種別 | {agent_type} |",
+                f"| 説明 | {agent_desc} |",
+                f"| エージェントID | `{agent_name}` |",
+                f"| トークン合計 | {sa_grand:,} |",
+                "",
+                "---",
+                "",
+                "## 会話ログ",
+                "",
+            ]
+            for entry in sa_entries:
+                msg = entry.get("message", {})
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+                text = extract_text_content(content)
+                if not text:
+                    continue
+                if role == "user":
+                    sa_lines += [f"### 👤 ユーザー", "", text, ""]
+                elif role == "assistant":
+                    sa_lines += [f"### 🤖 Claude", "", text, ""]
+
+            sa_output = sa_dir / f"{main_stem}-{agent_name}.md"
+            sa_output.write_text("\n".join(sa_lines), encoding="utf-8")
+
     return output_path
 
 
